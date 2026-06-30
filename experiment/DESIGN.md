@@ -80,6 +80,28 @@ returns fixes.
 → gap reproduces; `team` recovers half the gap ONLY on the capable model →
 directional support for capability×structure. (`team` deadlocked ~46 min once.)
 
+## C2 implementation design (enforced ownership)
+
+**Territory granularity — the key decision.** CooperBench tasks overlap the same
+file by design (~77%), so *exclusive file-level* ownership will block the
+non-owner from a file its feature genuinely needs — informative, but expect it to
+underperform on overlap-heavy tasks. Two versions:
+- **C2a (v1): claim-based file ownership, enforced.** No upfront planning (keeps
+  C2 isolated from C1). First agent to touch a file claims it (claims map in
+  Redis); an edit touching a file claimed by the OTHER agent is REJECTED. Realistic
+  "code ownership"; measures the cost of coarse exclusivity.
+- **C2b (later): line-range / function ownership** (negotiated up front → ties to
+  C1). Finer, handles shared files.
+
+**Enforcement mechanism (C2a).** Pure helper DONE: `agents/_coop/territory.py`
+(`files_in_patch`, `territory_violations`). Integration (not yet built): after each
+agent action, `git diff --name-only` in the container; for each touched file —
+claim it if unclaimed (Redis), or if claimed by the other agent, `git checkout --`
+that file to REVERT the out-of-territory edit and inject a message telling the
+agent to coordinate. Hook point: `mini_swe_agent_v2/agents/default.py`
+`execute_actions` (post-action), behind a `--setting`/flag. Needs Redis claims
+store (extend `_coop/coop_msg.py` pattern) + docker integration test.
+
 ## Operational constraints (learned in pilot)
 - Local Mac is Intel x86_64. Heavy/incompatible repos: `typst`(10GB Rust),
   `react_hook_form`, `dottxt_outlines` (hang); `go_chi` (no amd64 image);
