@@ -1,6 +1,12 @@
 """Unit tests for C2 territory enforcement helpers (pure, no Docker)."""
 
-from cooperbench.agents._coop.territory import ClaimLedger, files_in_patch, territory_violations
+from cooperbench.agents._coop.territory import (
+    ClaimLedger,
+    LineClaimLedger,
+    diff_hunk_ranges,
+    files_in_patch,
+    territory_violations,
+)
 
 
 class TestFilesInPatch:
@@ -61,3 +67,39 @@ class TestClaimLedger:
         led = ClaimLedger()
         led.claim("agent_a", ["b.py", "a.py"])
         assert led.claim("agent_b", ["b.py", "a.py", "b.py"]) == ["a.py", "b.py"]
+
+
+class TestDiffHunkRanges:
+    """Parse a unified diff into per-file base-line intervals [start, start+count)."""
+
+    def test_extracts_base_intervals_per_file(self):
+        diff = (
+            "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n"
+            "@@ -10,3 +10,4 @@\n ctx\n-old\n+new1\n+new2\n ctx\n"
+            "@@ -50,2 +51,2 @@\n-x\n+y\n z\n"
+        )
+        assert diff_hunk_ranges(diff) == {"f.py": [(10, 13), (50, 52)]}
+
+    def test_pure_insertion_claims_anchor_line(self):
+        # @@ -10,0 +11,2 @@  -> base count 0 -> conservative anchor [10, 11)
+        diff = "diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n@@ -10,0 +11,2 @@\n+a\n+b\n"
+        assert diff_hunk_ranges(diff) == {"f.py": [(10, 11)]}
+
+
+class TestLineClaimLedger:
+    """First-touch line-range ownership: same file OK if disjoint, overlap violates."""
+
+    def test_disjoint_ranges_in_same_file_are_allowed(self):
+        led = LineClaimLedger()
+        assert led.claim("a", "f.py", [(10, 20)]) == []
+        assert led.claim("b", "f.py", [(30, 40)]) == []  # disjoint -> fine
+
+    def test_overlapping_range_violates(self):
+        led = LineClaimLedger()
+        led.claim("a", "f.py", [(10, 20)])
+        assert led.claim("b", "f.py", [(15, 18)]) == [(15, 18)]
+
+    def test_same_file_different_agents_no_conflict_across_files(self):
+        led = LineClaimLedger()
+        led.claim("a", "f.py", [(10, 20)])
+        assert led.claim("b", "g.py", [(10, 20)]) == []  # different file
