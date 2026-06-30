@@ -201,6 +201,14 @@ def main():
         "to coordinate.",
     )
     run_parser.add_argument(
+        "--territory-mode",
+        choices=["file", "line"],
+        default="file",
+        help="(with --enforce-territory) ownership granularity: 'file' (C2, whole-file "
+        "exclusive) or 'line' (C2b, base-line ranges — agents may edit the same file in "
+        "disjoint regions; only overlapping regions are reverted).",
+    )
+    run_parser.add_argument(
         "--redis",
         default="redis://localhost:6379",
         help="Redis URL for inter-agent communication (default: redis://localhost:6379)",
@@ -420,6 +428,7 @@ def _run_command(args):
         logs_dir=args.log_dir if hasattr(args, "log_dir") else None,
         team_features=team_features,
         enforce_territory=args.enforce_territory,
+        territory_mode=args.territory_mode,
     )
 
 

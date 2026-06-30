@@ -124,6 +124,7 @@ class DefaultAgent:
         agent_id: str = "agent",
         config_class: type = AgentConfig,
         claim_ledger=None,
+        territory_mode: str = "file",
         **kwargs,
     ):
         """See the `AgentConfig` class for permitted keyword arguments."""
@@ -133,10 +134,13 @@ class DefaultAgent:
         self.env = env
         self.comm = comm
         self.agent_id = agent_id
-        # C2 enforced ownership: when a shared ClaimLedger is present, edits
-        # to files owned by another agent are reverted after each turn.
+        # C2/C2b enforced ownership: when a shared ledger is present, edits to
+        # territory owned by another agent are reverted after each turn.
         # None (the default) disables the hook entirely — no behaviour change.
+        # territory_mode "file" -> whole-file ownership (ClaimLedger, C2);
+        # "line" -> base-line ranges (LineClaimLedger, C2b).
         self._claim_ledger = claim_ledger
+        self._territory_mode = territory_mode
         self.extra_template_vars = {}
         self.logger = logging.getLogger("agent")
         self.cost = 0.0
@@ -360,40 +364,82 @@ class DefaultAgent:
         return observations
 
     def _enforce_territory(self) -> None:
-        """C2: revert this agent's edits to files owned by another agent.
+        """C2/C2b: revert this agent's edits to territory owned by another agent.
 
-        No-op unless a shared ClaimLedger was injected. After a turn's actions,
-        diff the repo, claim the files this agent touched (first-touch wins),
-        ``git checkout --`` any that another agent already owns, and tell the
-        agent to coordinate. v1 enforces tracked-file edits only (new/untracked
-        files are not caught). Never raises — enforcement must not crash a run.
+        No-op unless a shared ledger was injected. Dispatches on territory mode:
+        ``file`` (C2, whole-file ownership) or ``line`` (C2b, base-line ranges).
+        v1 enforces tracked-file edits only (new/untracked files are not caught).
+        Never raises — enforcement must not crash a run.
         """
         if self._claim_ledger is None:
             return
         try:
-            r = self.env.execute({"command": "cd /workspace/repo && git diff --name-only HEAD"})
-            touched = [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
-            if not touched:
-                return
-            violations = self._claim_ledger.claim(self.agent_id, touched)
-            if not violations:
-                return
-            for f in violations:
-                self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
-            self.log(f"TERRITORY: reverted out-of-territory edits {violations}")
-            owned = ", ".join(f"{f} (owned by {self._claim_ledger.owner(f)})" for f in violations)
-            self.add_messages(
-                self.model.format_message(
-                    role="user",
-                    content=(
-                        f"[Territory Enforcement]: You modified files outside your territory: {owned}. "
-                        "Those changes were REVERTED. Do not edit files owned by another agent — "
-                        "send them a message to coordinate instead."
-                    ),
-                )
-            )
+            if self._territory_mode == "line":
+                self._enforce_territory_lines()
+            else:
+                self._enforce_territory_files()
         except Exception as e:  # enforcement must never crash the agent
             self.log(f"territory enforcement error (ignored): {e}")
+
+    def _enforce_territory_files(self) -> None:
+        """C2 file-level: revert files another agent owns; claim the rest."""
+        r = self.env.execute({"command": "cd /workspace/repo && git diff --name-only HEAD"})
+        touched = [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
+        if not touched:
+            return
+        violations = self._claim_ledger.claim(self.agent_id, touched)
+        if not violations:
+            return
+        for f in violations:
+            self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
+        self.log(f"TERRITORY: reverted out-of-territory edits {violations}")
+        owned = ", ".join(f"{f} (owned by {self._claim_ledger.owner(f)})" for f in violations)
+        self.add_messages(
+            self.model.format_message(
+                role="user",
+                content=(
+                    f"[Territory Enforcement]: You modified files outside your territory: {owned}. "
+                    "Those changes were REVERTED. Do not edit files owned by another agent — "
+                    "send them a message to coordinate instead."
+                ),
+            )
+        )
+
+    def _enforce_territory_lines(self) -> None:
+        """C2b line-level: claim base-line ranges; revert files where this turn's
+        edits overlap a range another agent owns. Disjoint regions of a shared
+        file are allowed (they merge cleanly).
+
+        NOTE: the revert is whole-file (``git checkout -- <file>``) when ANY
+        overlap is found — a v1 coarseness on the revert side. Non-overlapping
+        ranges were still claimed in the ledger, so after the agent redoes the
+        work the disjoint parts survive. Per-hunk revert is a future refinement.
+        """
+        from cooperbench.agents._coop.territory import diff_hunk_ranges
+
+        r = self.env.execute({"command": "cd /workspace/repo && git diff HEAD"})
+        per_file = diff_hunk_ranges(r.get("output") or "")
+        if not per_file:
+            return
+        reverted: list[str] = []
+        for f, intervals in per_file.items():
+            violations = self._claim_ledger.claim(self.agent_id, f, intervals)
+            if violations:
+                self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
+                reverted.append(f"{f} (lines {violations})")
+        if not reverted:
+            return
+        self.log(f"TERRITORY(line): reverted overlapping edits {reverted}")
+        self.add_messages(
+            self.model.format_message(
+                role="user",
+                content=(
+                    f"[Territory Enforcement]: You edited line regions owned by another agent: "
+                    f"{'; '.join(reverted)}. Those files were REVERTED. You may edit a shared file "
+                    "only in regions another agent has not claimed — coordinate via a message."
+                ),
+            )
+        )
 
     def _handle_send_message(self, action: dict) -> dict:
         """Handle a send_message call via the messaging connector.
