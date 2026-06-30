@@ -57,6 +57,7 @@ def run(
     dataset_dir: str | None = None,
     logs_dir: str | None = None,
     team_features: TeamHarnessConfig | None = None,
+    enforce_territory: bool = False,
 ) -> None:
     """Run benchmark tasks.
 
@@ -193,6 +194,7 @@ def run(
                 agent_config=agent_config,
                 dataset_dir=dataset_dir,
                 logs_dir=logs_dir,
+                enforce_territory=enforce_territory,
             )
 
     eval_stats = None

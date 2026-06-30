@@ -194,6 +194,13 @@ def main():
         help="(team only) drop the typed coop-request / coop-respond / coop-pending verbs.",
     )
     run_parser.add_argument(
+        "--enforce-territory",
+        action="store_true",
+        help="(coop only) C2 enforced file ownership: first agent to touch a file "
+        "owns it; another agent's edits to it are reverted each turn and it is told "
+        "to coordinate.",
+    )
+    run_parser.add_argument(
         "--redis",
         default="redis://localhost:6379",
         help="Redis URL for inter-agent communication (default: redis://localhost:6379)",
@@ -412,6 +419,7 @@ def _run_command(args):
         dataset_dir=args.dataset_dir if hasattr(args, "dataset_dir") else None,
         logs_dir=args.log_dir if hasattr(args, "log_dir") else None,
         team_features=team_features,
+        enforce_territory=args.enforce_territory,
     )
 
 

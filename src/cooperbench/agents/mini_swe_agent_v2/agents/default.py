@@ -5,6 +5,7 @@ or https://minimal-agent.com for a tutorial on the basic building principles.
 import json
 import logging
 import re
+import shlex
 import traceback
 from pathlib import Path
 
@@ -122,6 +123,7 @@ class DefaultAgent:
         comm: MessagingConnector | None = None,
         agent_id: str = "agent",
         config_class: type = AgentConfig,
+        claim_ledger=None,
         **kwargs,
     ):
         """See the `AgentConfig` class for permitted keyword arguments."""
@@ -131,6 +133,10 @@ class DefaultAgent:
         self.env = env
         self.comm = comm
         self.agent_id = agent_id
+        # C2 enforced ownership: when a shared ClaimLedger is present, edits
+        # to files owned by another agent are reverted after each turn.
+        # None (the default) disables the hook entirely — no behaviour change.
+        self._claim_ledger = claim_ledger
         self.extra_template_vars = {}
         self.logger = logging.getLogger("agent")
         self.cost = 0.0
@@ -349,7 +355,45 @@ class DefaultAgent:
                     continue
 
             outputs.append(self.env.execute(action))
-        return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+        observations = self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+        self._enforce_territory()
+        return observations
+
+    def _enforce_territory(self) -> None:
+        """C2: revert this agent's edits to files owned by another agent.
+
+        No-op unless a shared ClaimLedger was injected. After a turn's actions,
+        diff the repo, claim the files this agent touched (first-touch wins),
+        ``git checkout --`` any that another agent already owns, and tell the
+        agent to coordinate. v1 enforces tracked-file edits only (new/untracked
+        files are not caught). Never raises — enforcement must not crash a run.
+        """
+        if self._claim_ledger is None:
+            return
+        try:
+            r = self.env.execute({"command": "cd /workspace/repo && git diff --name-only HEAD"})
+            touched = [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
+            if not touched:
+                return
+            violations = self._claim_ledger.claim(self.agent_id, touched)
+            if not violations:
+                return
+            for f in violations:
+                self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
+            self.log(f"TERRITORY: reverted out-of-territory edits {violations}")
+            owned = ", ".join(f"{f} (owned by {self._claim_ledger.owner(f)})" for f in violations)
+            self.add_messages(
+                self.model.format_message(
+                    role="user",
+                    content=(
+                        f"[Territory Enforcement]: You modified files outside your territory: {owned}. "
+                        "Those changes were REVERTED. Do not edit files owned by another agent — "
+                        "send them a message to coordinate instead."
+                    ),
+                )
+            )
+        except Exception as e:  # enforcement must never crash the agent
+            self.log(f"territory enforcement error (ignored): {e}")
 
     def _handle_send_message(self, action: dict) -> dict:
         """Handle a send_message call via the messaging connector.

@@ -11,6 +11,7 @@ import modal
 import yaml
 
 from cooperbench.agents import get_runner
+from cooperbench.agents._coop.territory import ClaimLedger
 from cooperbench.agents.mini_swe_agent_v2.connectors import create_git_server
 from cooperbench.config import ConfigManager
 from cooperbench.runner.tasks import DEFAULT_DATASET_DIR, DEFAULT_LOGS_DIR
@@ -54,6 +55,7 @@ def execute_coop(
     agent_config: str | None = None,
     dataset_dir: Path | str | None = None,
     logs_dir: Path | str | None = None,
+    enforce_territory: bool = False,
 ) -> dict | None:
     """Execute a cooperative task (two agents, separate features).
 
@@ -107,6 +109,10 @@ def execute_coop(
         if not quiet:
             console.print(f"  [dim]git[/dim] [green]ready[/green] {git_server_url}")
 
+    # C2: one shared first-touch ownership ledger for both agent threads.
+    # None unless --enforce-territory is set, so coop is otherwise unchanged.
+    claim_ledger = ClaimLedger() if (enforce_territory and n_agents > 1) else None
+
     results = {}
     threads = []
 
@@ -132,6 +138,7 @@ def execute_coop(
                 features=features,
                 dataset_dir=dataset_dir,
                 logs_dir=logs_dir,
+                claim_ledger=claim_ledger,
             )
         except Exception as e:
             results[agent_id] = {
@@ -274,6 +281,7 @@ def _spawn_agent(
     dataset_dir: Path | str | None = None,
     logs_dir: Path | str | None = None,
     starting_patch: str | None = None,
+    claim_ledger=None,
 ) -> dict:
     """Spawn a single agent on a feature using the agent framework adapter.
 
@@ -333,6 +341,7 @@ def _spawn_agent(
         agent_config=agent_config,
         log_dir=log_dir_path,
         starting_patch=starting_patch,
+        claim_ledger=claim_ledger,
     )
 
     return {
