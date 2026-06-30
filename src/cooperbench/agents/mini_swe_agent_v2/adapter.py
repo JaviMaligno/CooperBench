@@ -82,6 +82,7 @@ class MiniSweAgentV2Runner:
         team_id: str | None = None,
         task_list_url: str | None = None,
         team_features: TeamHarnessConfig | None = None,
+        starting_patch: str | None = None,
         **kwargs,
     ) -> AgentResult:
         """Run mini-swe-agent v2 on a task.
@@ -240,6 +241,19 @@ class MiniSweAgentV2Runner:
         # team mode is active.  step() picks this up as ``agent.team_poller``.
         if team_poller is not None:
             agent.team_poller = team_poller
+
+        # Sequential mode: apply + commit a prior agent's patch so this agent
+        # starts from that work and its own diff stacks cleanly on top. Must
+        # happen before the agent's first action.
+        if starting_patch:
+            from cooperbench.agents._coop.runtime import apply_patch_in_container
+
+            apply_status = apply_patch_in_container(env, starting_patch)
+            if apply_status.get("status") == "failed":
+                logger.warning(
+                    f"[{agent_id}] starting_patch failed to apply; continuing from base "
+                    f"({apply_status.get('output', '')[:300]})"
+                )
 
         # Run agent
         error_msg = None

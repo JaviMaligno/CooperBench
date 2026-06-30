@@ -273,6 +273,7 @@ def _spawn_agent(
     features: list[int] | None = None,
     dataset_dir: Path | str | None = None,
     logs_dir: Path | str | None = None,
+    starting_patch: str | None = None,
 ) -> dict:
     """Spawn a single agent on a feature using the agent framework adapter.
 
@@ -331,6 +332,7 @@ def _spawn_agent(
         config=config,
         agent_config=agent_config,
         log_dir=log_dir_path,
+        starting_patch=starting_patch,
     )
 
     return {

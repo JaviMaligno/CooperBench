@@ -21,6 +21,7 @@ from rich.table import Table
 
 from cooperbench.infra.redis import ensure_redis
 from cooperbench.runner.coop import execute_coop
+from cooperbench.runner.seq import execute_seq
 from cooperbench.runner.solo import execute_solo
 from cooperbench.runner.tasks import discover_tasks
 from cooperbench.runner.team import execute_team
@@ -100,13 +101,14 @@ def run(
     is_single = len(tasks) == 1
     is_solo = setting == "solo"
     is_team = setting == "team"
+    is_seq = setting == "seq"
 
     _print_header(
         run_name, setting, tasks, agent, model_name, concurrency, is_single, is_solo, git_enabled, messaging_enabled
     )
 
-    # Solo mode doesn't need Redis or git server
-    if not is_solo:
+    # Solo and seq modes don't need Redis or a git server
+    if not is_solo and not is_seq:
         if messaging_enabled:
             ensure_redis(redis_url)
 
@@ -127,6 +129,21 @@ def run(
     def execute_task(task_info):
         if is_solo:
             return execute_solo(
+                repo_name=task_info["repo"],
+                task_id=task_info["task_id"],
+                features=task_info["features"],
+                run_name=run_name,
+                agent_name=agent,
+                model_name=model_name,
+                force=force,
+                quiet=not is_single,
+                backend=backend,
+                agent_config=agent_config,
+                dataset_dir=dataset_dir,
+                logs_dir=logs_dir,
+            )
+        elif is_seq:
+            return execute_seq(
                 repo_name=task_info["repo"],
                 task_id=task_info["task_id"],
                 features=task_info["features"],

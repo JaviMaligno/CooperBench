@@ -9,7 +9,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn
 from rich.table import Table
 
 from cooperbench.eval.runs import discover_runs
-from cooperbench.eval.sandbox import _sanitize_patch, test_merged, test_solo
+from cooperbench.eval.sandbox import _sanitize_patch, test_merged, test_sequential, test_solo
 from cooperbench.runner.tasks import DEFAULT_DATASET_DIR, DEFAULT_LOGS_DIR
 from cooperbench.utils import console
 
@@ -347,6 +347,38 @@ def _evaluate_single(
             "task_id": task_id,
             "features": features,
             "setting": "solo",
+            "merge": None,
+            "feature1": result.get("feature1", {}),
+            "feature2": result.get("feature2", {}),
+            "both_passed": result.get("both_passed", False),
+            "error": result.get("error"),
+            "evaluated_at": datetime.now().isoformat(),
+        }
+    elif setting == "seq":
+        # Sequential evaluation - compose base + patch_a (f1) + patch_b (f2),
+        # where B was built on top of A's committed code.
+        patch_a_file = log_dir / f"agent{f1}.patch"
+        patch_b_file = log_dir / f"agent{f2}.patch"
+
+        patch_a = patch_a_file.read_text() if patch_a_file.exists() else ""
+        patch_b = patch_b_file.read_text() if patch_b_file.exists() else ""
+
+        result = test_sequential(
+            repo_name=repo,
+            task_id=task_id,
+            feature1_id=f1,
+            feature2_id=f2,
+            patch_a=patch_a,
+            patch_b=patch_b,
+            backend=backend,
+            dataset_dir=dataset_dir,
+        )
+
+        eval_result = {
+            "repo": repo,
+            "task_id": task_id,
+            "features": features,
+            "setting": "seq",
             "merge": None,
             "feature1": result.get("feature1", {}),
             "feature2": result.get("feature2", {}),

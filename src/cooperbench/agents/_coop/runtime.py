@@ -150,6 +150,37 @@ def read_file_from_container(env: ContainerEnv, path: str) -> str:
     return ""
 
 
+def apply_patch_in_container(env: ContainerEnv, patch_content: str) -> dict[str, Any]:
+    """Apply a patch inside the container's repo and COMMIT it.
+
+    Used by sequential mode so agent B starts from agent A's committed code:
+    once A's patch is committed, B's own ``git diff`` comes out stacked on top
+    of A (no later merge needed). Falls back to a 3-way apply when a plain apply
+    is rejected. An empty patch is a no-op.
+
+    Returns ``{"status": "applied"|"skipped"|"failed", "output": str}``.
+    """
+    patch = normalize_patch(patch_content)
+    if not patch:
+        return {"status": "skipped", "output": ""}
+
+    write_file_in_container(env, "/tmp/starting.patch", patch)
+    cmd = (
+        "cd /workspace/repo && "
+        'git config user.email "seq@cooperbench.local" && '
+        'git config user.name "CooperBench Seq" && '
+        "if git apply /tmp/starting.patch 2>&1; then APPLIED=1; "
+        "elif git apply --3way /tmp/starting.patch 2>&1; then APPLIED=1; "
+        "else APPLIED=0; fi && "
+        'if [ "$APPLIED" = 1 ]; then '
+        "  git add -A && git commit -q -m 'Agent A changes' && echo SEQ_APPLIED; "
+        "else echo SEQ_FAILED; fi"
+    )
+    result = env.execute({"command": cmd})
+    output = result.get("output") or ""
+    return {"status": "applied" if "SEQ_APPLIED" in output else "failed", "output": output}
+
+
 def normalize_patch(text: str) -> str:
     """Trim leading/trailing blank lines and guarantee exactly one trailing newline.
 
