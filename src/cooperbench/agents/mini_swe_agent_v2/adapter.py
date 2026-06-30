@@ -85,6 +85,7 @@ class MiniSweAgentV2Runner:
         starting_patch: str | None = None,
         claim_ledger=None,
         territory_mode: str = "file",
+        handshake_ledger=None,
         **kwargs,
     ) -> AgentResult:
         """Run mini-swe-agent v2 on a task.
@@ -238,6 +239,7 @@ class MiniSweAgentV2Runner:
             agent_id=agent_id,
             claim_ledger=claim_ledger,
             territory_mode=territory_mode,
+            handshake_ledger=handshake_ledger,
             **agent_cfg,
         )
         agent.extra_template_vars.update(extra_vars)

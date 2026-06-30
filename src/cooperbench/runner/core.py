@@ -59,6 +59,7 @@ def run(
     team_features: TeamHarnessConfig | None = None,
     enforce_territory: bool = False,
     territory_mode: str = "file",
+    require_handshake: bool = False,
 ) -> None:
     """Run benchmark tasks.
 
@@ -197,6 +198,7 @@ def run(
                 logs_dir=logs_dir,
                 enforce_territory=enforce_territory,
                 territory_mode=territory_mode,
+                require_handshake=require_handshake,
             )
 
     eval_stats = None

@@ -125,6 +125,7 @@ class DefaultAgent:
         config_class: type = AgentConfig,
         claim_ledger=None,
         territory_mode: str = "file",
+        handshake_ledger=None,
         **kwargs,
     ):
         """See the `AgentConfig` class for permitted keyword arguments."""
@@ -141,6 +142,10 @@ class DefaultAgent:
         # "line" -> base-line ranges (LineClaimLedger, C2b).
         self._claim_ledger = claim_ledger
         self._territory_mode = territory_mode
+        # C1 plan handshake: when a shared ledger is present, code edits are
+        # reverted until every agent has published a plan (sent a message).
+        # None (default) disables the gate entirely — no behaviour change.
+        self._handshake_ledger = handshake_ledger
         self.extra_template_vars = {}
         self.logger = logging.getLogger("agent")
         self.cost = 0.0
@@ -360,8 +365,40 @@ class DefaultAgent:
 
             outputs.append(self.env.execute(action))
         observations = self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+        # C1 gate runs first: while the plan handshake is incomplete every edit
+        # is reverted, so territory enforcement after it is a no-op. Once the
+        # gate opens, territory enforcement (if enabled) applies normally.
+        self._enforce_handshake()
         self._enforce_territory()
         return observations
+
+    def _enforce_handshake(self) -> None:
+        """C1: until every agent has published a plan, revert this agent's edits.
+
+        No-op unless a shared handshake ledger was injected. Never raises.
+        """
+        if self._handshake_ledger is None or self._handshake_ledger.gate_open():
+            return
+        try:
+            r = self.env.execute({"command": "cd /workspace/repo && git diff --name-only HEAD"})
+            touched = [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
+            if not touched:
+                return
+            for f in touched:
+                self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
+            self.log(f"HANDSHAKE: reverted edits made before plan exchange {touched}")
+            self.add_messages(
+                self.model.format_message(
+                    role="user",
+                    content=(
+                        "[Plan Handshake]: You edited code before the plan exchange was complete, "
+                        "so your edits were REVERTED. First publish your plan to your partner (send "
+                        "them a message), and wait until they have shared theirs, before editing code."
+                    ),
+                )
+            )
+        except Exception as e:  # enforcement must never crash the agent
+            self.log(f"handshake enforcement error (ignored): {e}")
 
     def _enforce_territory(self) -> None:
         """C2/C2b: revert this agent's edits to territory owned by another agent.
@@ -451,6 +488,12 @@ class DefaultAgent:
         recipient = action.get("recipient", "")
         content = action.get("content", "")
         wait = action.get("wait", False)
+
+        # C1: any outbound inter-agent message counts as publishing this agent's
+        # plan (v1 simplification — content is not inspected). Opens the gate
+        # once the partner has also sent at least one message.
+        if self._handshake_ledger is not None:
+            self._handshake_ledger.mark_planned(self.agent_id)
 
         if wait and hasattr(self.comm, "send_and_wait"):
             replies = self.comm.send_and_wait(recipient, content, timeout=60)

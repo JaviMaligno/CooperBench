@@ -11,6 +11,7 @@ import modal
 import yaml
 
 from cooperbench.agents import get_runner
+from cooperbench.agents._coop.handshake import HandshakeLedger
 from cooperbench.agents._coop.territory import ClaimLedger, LineClaimLedger
 from cooperbench.agents.mini_swe_agent_v2.connectors import create_git_server
 from cooperbench.config import ConfigManager
@@ -57,6 +58,7 @@ def execute_coop(
     logs_dir: Path | str | None = None,
     enforce_territory: bool = False,
     territory_mode: str = "file",
+    require_handshake: bool = False,
 ) -> dict | None:
     """Execute a cooperative task (two agents, separate features).
 
@@ -118,6 +120,13 @@ def execute_coop(
     if enforce_territory and n_agents > 1:
         claim_ledger = LineClaimLedger() if territory_mode == "line" else ClaimLedger()
 
+    # C1: one shared plan-handshake gate for both agent threads. None unless
+    # --require-handshake is set. Edits are reverted until both agents publish
+    # a plan. Independent of --enforce-territory; both may be on at once.
+    handshake_ledger = None
+    if require_handshake and n_agents > 1:
+        handshake_ledger = HandshakeLedger(agents)
+
     results = {}
     threads = []
 
@@ -145,6 +154,7 @@ def execute_coop(
                 logs_dir=logs_dir,
                 claim_ledger=claim_ledger,
                 territory_mode=territory_mode,
+                handshake_ledger=handshake_ledger,
             )
         except Exception as e:
             results[agent_id] = {
@@ -289,6 +299,7 @@ def _spawn_agent(
     starting_patch: str | None = None,
     claim_ledger=None,
     territory_mode: str = "file",
+    handshake_ledger=None,
 ) -> dict:
     """Spawn a single agent on a feature using the agent framework adapter.
 
@@ -350,6 +361,7 @@ def _spawn_agent(
         starting_patch=starting_patch,
         claim_ledger=claim_ledger,
         territory_mode=territory_mode,
+        handshake_ledger=handshake_ledger,
     )
 
     return {

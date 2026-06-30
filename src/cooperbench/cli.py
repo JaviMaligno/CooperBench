@@ -209,6 +209,13 @@ def main():
         "disjoint regions; only overlapping regions are reverted).",
     )
     run_parser.add_argument(
+        "--require-handshake",
+        action="store_true",
+        help="(coop only) C1 plan handshake: code edits are reverted until both agents "
+        "have published a plan (sent each other a message), forcing a plan exchange "
+        "before coding. Independent of --enforce-territory.",
+    )
+    run_parser.add_argument(
         "--redis",
         default="redis://localhost:6379",
         help="Redis URL for inter-agent communication (default: redis://localhost:6379)",
@@ -429,6 +436,7 @@ def _run_command(args):
         team_features=team_features,
         enforce_territory=args.enforce_territory,
         territory_mode=args.territory_mode,
+        require_handshake=args.require_handshake,
     )
 
 
