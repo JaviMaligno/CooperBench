@@ -45,8 +45,8 @@ def discover_runs(
     if subset:
         subset_data = load_subset(subset, dataset_dir=dataset_dir)
 
-    # Check for new structure (solo/, coop/, team/, seq/)
-    for setting in ["solo", "coop", "team", "seq"]:
+    # Check for new structure (solo/, coop/, team/, seq/, c4/)
+    for setting in ["solo", "coop", "team", "seq", "c4"]:
         setting_dir = log_dir / setting
         if setting_dir.exists():
             runs.extend(

@@ -157,12 +157,13 @@ def main():
     )
     run_parser.add_argument(
         "--setting",
-        choices=["coop", "solo", "team", "seq"],
+        choices=["coop", "solo", "team", "seq", "c4"],
         default="coop",
         help="Benchmark setting: coop (N peers), solo (1 agent), team "
         "(N agents with shared task list, lead/member roles, shared "
-        "scratchpad), or seq (sequential pipeline: agent B builds on agent A's "
-        "committed work) (default: coop)",
+        "scratchpad), seq (sequential pipeline: agent B builds on agent A's "
+        "committed work), or c4 (two agents develop independently, then an "
+        "integrator agent reconciles their patches) (default: coop)",
     )
     # Per-feature toggles for the team harness — flip any of these off
     # to ablate that coordination mechanism while keeping the others on.

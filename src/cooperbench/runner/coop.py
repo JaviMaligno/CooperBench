@@ -300,6 +300,7 @@ def _spawn_agent(
     claim_ledger=None,
     territory_mode: str = "file",
     handshake_ledger=None,
+    task_override: str | None = None,
 ) -> dict:
     """Spawn a single agent on a feature using the agent framework adapter.
 
@@ -316,7 +317,9 @@ def _spawn_agent(
     if not feature_file.exists():
         raise FileNotFoundError(f"Feature file not found: {feature_file}")
 
-    task = feature_file.read_text()
+    # task_override lets callers (e.g. the C4 integrator) supply a custom prompt
+    # instead of the feature spec, while still resolving the right image/feature.
+    task = task_override if task_override is not None else feature_file.read_text()
     image = get_image_name(repo_name, task_id)
 
     # Compute log directory path

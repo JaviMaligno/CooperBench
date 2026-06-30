@@ -386,6 +386,33 @@ def _evaluate_single(
             "error": result.get("error"),
             "evaluated_at": datetime.now().isoformat(),
         }
+    elif setting == "c4":
+        # Integrator produced one combined patch -> solo-style eval vs both suites.
+        patch_file = log_dir / "integrator.patch"
+        patch = patch_file.read_text() if patch_file.exists() else ""
+
+        result = test_solo(
+            repo_name=repo,
+            task_id=task_id,
+            feature1_id=f1,
+            feature2_id=f2,
+            patch=patch,
+            backend=backend,
+            dataset_dir=dataset_dir,
+        )
+
+        eval_result = {
+            "repo": repo,
+            "task_id": task_id,
+            "features": features,
+            "setting": "c4",
+            "merge": None,
+            "feature1": result.get("feature1", {}),
+            "feature2": result.get("feature2", {}),
+            "both_passed": result.get("both_passed", False),
+            "error": result.get("error"),
+            "evaluated_at": datetime.now().isoformat(),
+        }
     else:
         # Coop evaluation - merge two agent patches
         patch1_file = log_dir / f"agent{f1}.patch"
