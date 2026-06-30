@@ -1,0 +1,11 @@
+{
+  "name": "light_local",
+  "description": "Oracle-validated light Python repos with amd64 images that run fast on a local Intel Mac. Excludes typst/react_hook_form/dottxt (heavy/hang), go_chi (no amd64 image), dspy task8563 f4 (gold patch fails 1 test), and openai_tiktoken task0 (bad agent patches hang its tests -> 600s eval timeouts).",
+  "stats": { "tasks": 4, "pairs": 4, "repos": 3 },
+  "tasks": [
+    { "repo": "pallets_click_task",   "task_id": 2800,  "pairs": [[1, 4]] },
+    { "repo": "pallets_jinja_task",   "task_id": 1559,  "pairs": [[5, 8]] },
+    { "repo": "pallets_jinja_task",   "task_id": 1621,  "pairs": [[6, 10]] },
+    { "repo": "llama_index_task",     "task_id": 17244, "pairs": [[5, 6]] }
+  ]
+}

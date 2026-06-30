@@ -1,0 +1,93 @@
+# Experiment: Structure vs Social Intelligence in Coding-Agent Collaboration
+
+Response experiment to **CooperBench** (Khatua/Zhu/.../Yang, arXiv 2601.13295,
+"Why Coding Agents Cannot be Your Teammates Yet").
+
+## Thesis
+
+CooperBench measures *unstructured, advisory* coordination **by design** (they
+deliberately avoid scaffolding: "scaffolds limit flexible cooperation") and from
+the resulting "curse of coordination" conclude agents lack trained *social
+intelligence*. The engineering question they skip is: **what is the minimal
+*enforced* structure that makes agents effective teammates, and does its effect
+scale with model capability?** Humans don't fix coordination failures with
+therapy — they use process (ownership, contracts, review, sequencing).
+
+**What is NEW here (not in their paper):**
+1. Effect of *our* enforced structural interventions on the coordination gap.
+2. The **capability × structure interaction** (they report solo/coop per model
+   but not how much *structure* recovers as a function of model strength).
+3. The **minimal-structure frontier** (cheapest structure that recovers solo-level).
+
+Reproducing solo→coop is only a **sanity check** (cite theirs, don't claim it).
+
+## Conditions (ordered by "structure cost"; advisory → enforced)
+
+| id | name | enforced? | targets (their failure modes) | real-world analogue |
+|----|------|-----------|-------------------------------|---------------------|
+| C0 | `coop` (baseline, theirs) | no | — | free-for-all |
+| C0.5 | `team` (theirs) | **advisory** ownership | commitment 32% | lead/member + task list |
+| C1 | plan-first handshake | enforced gate | expectation 42% | design/API review before coding |
+| C2 | territory ownership ENFORCED | enforced | commitment 32% / overwrites | CODEOWNERS / locks |
+| C3 | sequential pipeline | enforced ordering | all | sequential PRs / rebase on main |
+| C4 | integrator agent | enforced | integration reasoning | PR reviewer / integration eng |
+
+### C1 — plan-first handshake (cost: low)
+Each agent must publish a structured plan (files/functions/line-ranges + exposed
+interface) and receive partner `ack` BEFORE the edit tool unlocks. Scaffold gates
+editing in the agent loop. New Redis verbs `coop-plan`/`coop-ack`. The "minimum"
+candidate on the frontier.
+
+### C2 — territory ownership enforced (cost: medium) — ⭐ flagship
+File/region space partitioned up front; scaffold **rejects** edits outside the
+owned territory (hook checks the diff, reverts/denies). This is the *enforced*
+version of what `team` does *advisorily*. **Key contrast: `team` (advisory) vs C2
+(enforced), same structure, only enforcement differs** → isolates the thesis to a
+single variable. If C2 >> team, the missing ingredient is enforced compliance, not
+social intelligence.
+
+### C3 — sequential pipeline (cost: high structure, but the ceiling) — START HERE
+Agent A implements its feature and "commits"; Agent B starts FROM A's resulting
+code and implements its feature. Concurrent-conflict problem becomes a rebase.
+Upper bound: if even this doesn't recover solo, the problem is deeper than
+coordination. Cheapest to implement (orchestration wrapper, reuses solo machinery
+twice + patch chaining; no agent-loop changes). Trade-off to discuss: gives up the
+parallelism that motivates multi-agent.
+
+### C4 — integrator agent (cost: high; later)
+Third agent owns the merge: receives both patches, resolves conflicts, runs tests,
+returns fixes.
+
+## Axes & measurement
+- **Capability axis:** `gpt-5.4` / `gpt-5.4-mini` / `gpt-5-nano` (Azure native route).
+- **Metrics:** pass rate; gap-closed = (cond − coop)/(solo − coop); retention =
+  cond/solo; plus **cost-of-structure** ($/tokens/wall-time per condition).
+- **Eval set:** iterate on `light_local` (fast Python amd64 repos); `flash`(50) as
+  FINAL field once a condition shows signal (flash is the test bed, NOT the result).
+
+## Implementation order
+1. **C3** (ceiling, cheapest code) → then **C2** (flagship contrast vs team) →
+   then **C1** (minimum) → **C4** (last). All 4 land eventually.
+2. TDD on the light bench. Inject prompts in `src/cooperbench/agents/_coop/prompt.py`;
+   enforcement hooks in the agent loop (`mini_swe_agent_v2/agents/default.py`) and
+   Redis tool (`_coop/coop_msg.py`); C3 as an orchestration wrapper.
+
+## Pilot result (2026-06-30, light_local n=4, DIRECTIONAL, not publishable)
+| model | solo | coop | team |
+|-------|------|------|------|
+| gpt-5.4-mini | 25% | 0% | 0% |
+| gpt-5.4 | 50% | 0% | 25% |
+→ gap reproduces; `team` recovers half the gap ONLY on the capable model →
+directional support for capability×structure. (`team` deadlocked ~46 min once.)
+
+## Operational constraints (learned in pilot)
+- Local Mac is Intel x86_64. Heavy/incompatible repos: `typst`(10GB Rust),
+  `react_hook_form`, `dottxt_outlines` (hang); `go_chi` (no amd64 image);
+  `openai_tiktoken` task0 (bad patches hang tests). Use `light_local` subset.
+- Runs are RESUMABLE (omit `--force`) → interruptions don't lose work.
+- `COOPERBENCH_EVAL_TIMEOUT` env added to `eval/sandbox.py` (hanging patch fails fast).
+- NEED a per-task wall-clock cap for `team`/coop deadlocks before scaling.
+- Long runs die if the Mac sleeps; `caffeinate -i` doesn't beat lid-close.
+  Budget cap $200 via `MSWEA_GLOBAL_COST_LIMIT` per batch + `cost_ledger.py`.
+- Helpers in repo root: `azure_env.sh`, `cost_ledger.py`, `oracle_check.py`,
+  `dataset/subsets/light_local.json`.

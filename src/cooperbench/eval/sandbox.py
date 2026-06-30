@@ -1,8 +1,14 @@
 """Sandbox execution for patch testing."""
 
 import base64
+import os
 import re
 from pathlib import Path
+
+# Per-test sandbox timeout (seconds). Overridable via env so a hanging
+# agent patch fails fast instead of waiting the full default. Set
+# COOPERBENCH_EVAL_TIMEOUT before launching `cooperbench eval`.
+_EVAL_TIMEOUT = int(os.getenv("COOPERBENCH_EVAL_TIMEOUT", "600"))
 
 from cooperbench.eval.backends import get_backend
 from cooperbench.eval.backends.base import Sandbox
@@ -15,7 +21,7 @@ def run_patch_test(
     task_id: int,
     feature_id: int,
     agent_patch: str | Path | None = None,
-    timeout: int = 600,
+    timeout: int = _EVAL_TIMEOUT,
     backend: str = "docker",
     dataset_dir: Path | str | None = None,
 ) -> dict:
@@ -97,7 +103,7 @@ def test_merged(
     feature2_id: int,
     patch1: str | Path | None = None,
     patch2: str | Path | None = None,
-    timeout: int = 600,
+    timeout: int = _EVAL_TIMEOUT,
     backend: str = "docker",
     dataset_dir: Path | str | None = None,
 ) -> dict:
@@ -308,7 +314,7 @@ def test_solo(
     feature1_id: int,
     feature2_id: int,
     patch: str | Path | None = None,
-    timeout: int = 600,
+    timeout: int = _EVAL_TIMEOUT,
     backend: str = "docker",
     dataset_dir: Path | str | None = None,
 ) -> dict:
@@ -389,6 +395,85 @@ def test_solo(
         }
     except Exception as e:
         return _solo_error_result(str(e))
+    finally:
+        sb.terminate()
+
+
+def test_sequential(
+    repo_name: str,
+    task_id: int,
+    feature1_id: int,
+    feature2_id: int,
+    patch_a: str | Path | None = None,
+    patch_b: str | Path | None = None,
+    timeout: int = _EVAL_TIMEOUT,
+    backend: str = "docker",
+    dataset_dir: Path | str | None = None,
+) -> dict:
+    """Test a sequential-pipeline result: base + patch_a + patch_b.
+
+    In sequential mode agent A implements feature1, then agent B starts from
+    A's code and implements feature2, so patch_b is stacked on patch_a.
+    Applying A's hunks then B's (from base) reproduces base+A+B, so we compose
+    the two patches and test the combined tree against each feature's suite.
+
+    Returns: dict with keys setting, patch_lines, feature1, feature2,
+    both_passed, error.
+    """
+    root = Path(dataset_dir) if dataset_dir is not None else DEFAULT_DATASET_DIR
+    task_dir = root / repo_name / f"task{task_id}"
+
+    tests1_path = task_dir / f"feature{feature1_id}" / "tests.patch"
+    tests2_path = task_dir / f"feature{feature2_id}" / "tests.patch"
+
+    if not tests1_path.exists():
+        return _seq_error_result(f"Tests patch not found: {tests1_path}")
+    if not tests2_path.exists():
+        return _seq_error_result(f"Tests patch not found: {tests2_path}")
+
+    patch_a_content = _filter_test_files(_load_patch(patch_a) or "")
+    patch_b_content = _filter_test_files(_load_patch(patch_b) or "")
+    parts = [p for p in (patch_a_content.rstrip("\n"), patch_b_content.rstrip("\n")) if p.strip()]
+    combined = ("\n".join(parts) + "\n") if parts else ""
+
+    tests1_content = tests1_path.read_text()
+    tests2_content = tests2_path.read_text()
+
+    image = get_image_name(repo_name, task_id)
+    eval_backend = get_backend(backend)
+    sb = eval_backend.create_sandbox(image, timeout)
+
+    try:
+        result = sb.exec("bash", "-c", "cd /workspace/repo && git rev-parse HEAD")
+        base_sha = result.stdout_read().strip()
+
+        if not base_sha:
+            return _seq_error_result("Failed to get base commit SHA")
+
+        _write_patch(sb, "seq.patch", combined)
+        _write_patch(sb, "tests1.patch", tests1_content)
+        _write_patch(sb, "tests2.patch", tests2_content)
+
+        # runner.sh resets to base then applies the (composed) patch + tests
+        test1_result = _run_tests(sb, "tests1.patch", "seq.patch", base_sha)
+        test2_result = _run_tests(sb, "tests2.patch", "seq.patch", base_sha)
+
+        return {
+            "setting": "seq",
+            "patch_lines": len(combined.splitlines()) if combined else 0,
+            "feature1": {
+                "passed": test1_result["passed"],
+                "test_output": test1_result["output"],
+            },
+            "feature2": {
+                "passed": test2_result["passed"],
+                "test_output": test2_result["output"],
+            },
+            "both_passed": test1_result["passed"] and test2_result["passed"],
+            "error": None,
+        }
+    except Exception as e:
+        return _seq_error_result(str(e))
     finally:
         sb.terminate()
 
@@ -768,6 +853,17 @@ def _merged_error_result(error: str) -> dict:
 def _solo_error_result(error: str) -> dict:
     return {
         "setting": "solo",
+        "patch_lines": 0,
+        "feature1": {"passed": False, "test_output": ""},
+        "feature2": {"passed": False, "test_output": ""},
+        "both_passed": False,
+        "error": error,
+    }
+
+
+def _seq_error_result(error: str) -> dict:
+    return {
+        "setting": "seq",
         "patch_lines": 0,
         "feature1": {"passed": False, "test_output": ""},
         "feature2": {"passed": False, "test_output": ""},
