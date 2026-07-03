@@ -29,17 +29,34 @@ def build_resolver_prompt(path: str, content: str) -> str:
     return f"""You are a merge-conflict resolver. Below is the file `{path}` after a failed
 git merge, containing conflict markers (<<<<<<< / ======= / >>>>>>>).
 
-Resolve the conflicts ONLY if they are trivial: the two sides are independent
-changes that can both be kept mechanically (e.g. each side adds a different
-name to the same import line, each side inserts a different function/class
-near the same location, each side adds a different parameter to a signature
-without interacting logic). In that case output the complete resolved file
-content, nothing else (no code fences, no commentary).
+A conflict is TRIVIAL when both sides ADD something different and independent,
+so the resolution is simply to KEEP BOTH. Trivial cases you MUST resolve:
+- each side adds a different name to the same import line / __all__ / list /
+  dict / enum / registry -> merge into one line or block containing both names
+- each side inserts a different function, class, or test near the same spot
+  -> keep both blocks, one after the other
+- each side adds a different keyword parameter (with a default) to the same
+  signature -> keep both parameters and both sides' independent uses of them
+- both sides add the exact same line (e.g. the same import) -> keep one copy
 
-If ANY conflict in the file requires understanding the intent of either
-change to reconcile them (same logic modified in incompatible ways,
-restructured control flow, one side refactors what the other side edits),
-output exactly the single word: GIVEUP
+Example of a trivial conflict and its resolution:
+    <<<<<<< HEAD
+    from ._other import FunctionCheck, IsHash, IsJson
+    =======
+    from ._other import FunctionCheck, IsEmail, IsJson
+    >>>>>>> agent1
+resolves to:
+    from ._other import FunctionCheck, IsEmail, IsHash, IsJson
+
+A conflict is SEMANTIC only when the two sides MODIFY the same existing logic
+in genuinely incompatible ways: both rewrite the body of the same function
+differently, one side restructures/renames what the other side edits, or
+keeping both changes would produce contradictory behavior. Additions of
+different independent things are NOT semantic, even on the same line.
+
+If every conflict in the file is trivial, output the complete resolved file
+content, nothing else (no code fences, no commentary). If ANY conflict is
+semantic, output exactly the single word: GIVEUP
 
 File content:
 {content}"""
