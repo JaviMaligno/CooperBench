@@ -387,16 +387,23 @@ def _evaluate_single(
             "evaluated_at": datetime.now().isoformat(),
         }
     elif setting == "c4":
-        # Integrator produced one combined patch -> solo-style eval vs both suites.
+        # The integrator runs with agent A's patch already COMMITTED in its
+        # container, so integrator.patch (git diff vs HEAD) holds only the
+        # integrator's delta ON TOP of A. Evaluating it alone against base
+        # loses A's work (feature1 can never pass -> false 0%). Reproduce the
+        # integrator's final workspace instead: base + patch_a + integrator.
+        patch_a_file = log_dir / f"agent{f1}.patch"
         patch_file = log_dir / "integrator.patch"
+        patch_a = patch_a_file.read_text() if patch_a_file.exists() else ""
         patch = patch_file.read_text() if patch_file.exists() else ""
 
-        result = test_solo(
+        result = test_sequential(
             repo_name=repo,
             task_id=task_id,
             feature1_id=f1,
             feature2_id=f2,
-            patch=patch,
+            patch_a=patch_a,
+            patch_b=patch,
             backend=backend,
             dataset_dir=dataset_dir,
         )
