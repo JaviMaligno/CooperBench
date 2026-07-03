@@ -372,6 +372,28 @@ class DefaultAgent:
         self._enforce_territory()
         return observations
 
+    def _revert_hunks(self, diff_text: str, f: str, violations) -> bool:
+        """Revert only the violating hunks of ``f`` (git apply -R). Returns
+        False if no reverse patch could be built or it failed to apply, so the
+        caller falls back to the whole-file revert."""
+        import base64
+
+        from cooperbench.agents._coop.territory import reverse_patch_for_violations
+
+        rp = reverse_patch_for_violations(diff_text, f, violations)
+        if rp is None:
+            return False
+        encoded = base64.b64encode(rp.encode()).decode()
+        r = self.env.execute(
+            {
+                "command": (
+                    f"cd /workspace/repo && echo '{encoded}' | base64 -d > /tmp/_territory_revert.patch "
+                    "&& git apply -R /tmp/_territory_revert.patch && echo REVERT_OK"
+                )
+            }
+        )
+        return "REVERT_OK" in (r.get("output") or "")
+
     def _revert_file(self, f: str) -> None:
         """Restore a file to HEAD: tracked files via checkout, new files by
         deletion (git checkout cannot touch a file HEAD doesn't know about)."""
@@ -456,16 +478,16 @@ class DefaultAgent:
         )
 
     def _enforce_territory_lines(self) -> None:
-        """C2b line-level: claim base-line ranges; revert files where this turn's
-        edits overlap a range another agent owns. Disjoint regions of a shared
-        file are allowed (they merge cleanly).
+        """C2b line-level: claim base-line ranges; revert edits overlapping a
+        range another agent owns. Disjoint regions of a shared file are allowed
+        (they merge cleanly).
 
-        NOTE: the revert is whole-file (``git checkout -- <file>``) when ANY
-        overlap is found — a v1 coarseness on the revert side. Non-overlapping
-        ranges were still claimed in the ledger, so after the agent redoes the
-        work the disjoint parts survive. Per-hunk revert is a future refinement.
+        v2 (QA-b): only the VIOLATING hunks are reverted (``git apply -R`` of a
+        patch built from them); the agent's non-violating work in the same file
+        survives. Falls back to the v1 whole-file revert if the reverse patch
+        fails to apply.
         """
-        from cooperbench.agents._coop.territory import diff_hunk_ranges
+        from cooperbench.agents._coop.territory import diff_hunk_ranges, reverse_patch_for_violations
 
         # `git add -N` registers intent-to-add so newly created files show up
         # in `git diff HEAD` as new-file hunks (otherwise they'd be invisible
@@ -473,14 +495,16 @@ class DefaultAgent:
         r = self.env.execute(
             {"command": "cd /workspace/repo && git add -N . 2>/dev/null; git diff HEAD"}
         )
-        per_file = diff_hunk_ranges(r.get("output") or "")
+        diff_text = r.get("output") or ""
+        per_file = diff_hunk_ranges(diff_text)
         if not per_file:
             return
         reverted: list[str] = []
         for f, intervals in per_file.items():
             violations = self._claim_ledger.claim(self.agent_id, f, intervals)
             if violations:
-                self._revert_file(f)
+                if not self._revert_hunks(diff_text, f, violations):
+                    self._revert_file(f)
                 reverted.append(f"{f} (lines {violations})")
         if not reverted:
             return
@@ -490,8 +514,9 @@ class DefaultAgent:
                 role="user",
                 content=(
                     f"[Territory Enforcement]: You edited line regions owned by another agent: "
-                    f"{'; '.join(reverted)}. Those files were REVERTED. You may edit a shared file "
-                    "only in regions another agent has not claimed — coordinate via a message."
+                    f"{'; '.join(reverted)}. Those edits were REVERTED (your work in other regions "
+                    "of the file was kept). You may edit a shared file only in regions another "
+                    "agent has not claimed — coordinate via a message."
                 ),
             )
         )

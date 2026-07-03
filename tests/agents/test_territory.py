@@ -103,3 +103,49 @@ class TestLineClaimLedger:
         led = LineClaimLedger()
         led.claim("a", "f.py", [(10, 20)])
         assert led.claim("b", "g.py", [(10, 20)]) == []  # different file
+
+
+class TestReversePatchForViolations:
+    """QA-b: build a patch of ONLY the violating hunks so the hook can
+    git apply -R it (per-hunk revert instead of whole-file)."""
+
+    DIFF = (
+        "diff --git a/f.py b/f.py\n"
+        "index 111..222 100644\n"
+        "--- a/f.py\n"
+        "+++ b/f.py\n"
+        "@@ -10,3 +10,4 @@\n ctx\n-old\n+new1\n+new2\n ctx\n"
+        "@@ -50,2 +51,2 @@\n-x\n+y\n z\n"
+        "diff --git a/g.py b/g.py\n"
+        "--- a/g.py\n"
+        "+++ b/g.py\n"
+        "@@ -1,2 +1,3 @@\n a\n+b\n c\n"
+    )
+
+    def test_selects_only_overlapping_hunks(self):
+        from cooperbench.agents._coop.territory import reverse_patch_for_violations
+
+        patch = reverse_patch_for_violations(self.DIFF, "f.py", [(11, 12)])
+        assert patch is not None
+        assert "@@ -10,3 +10,4 @@" in patch
+        assert "@@ -50,2 +51,2 @@" not in patch
+        assert "g.py" not in patch
+        assert patch.startswith("diff --git a/f.py b/f.py\n")
+        assert "--- a/f.py" in patch and "+++ b/f.py" in patch
+        assert patch.endswith("\n")
+
+    def test_all_hunks_when_all_overlap(self):
+        from cooperbench.agents._coop.territory import reverse_patch_for_violations
+
+        patch = reverse_patch_for_violations(self.DIFF, "f.py", [(10, 60)])
+        assert "@@ -10,3 +10,4 @@" in patch and "@@ -50,2 +51,2 @@" in patch
+
+    def test_none_when_no_hunk_overlaps(self):
+        from cooperbench.agents._coop.territory import reverse_patch_for_violations
+
+        assert reverse_patch_for_violations(self.DIFF, "f.py", [(100, 110)]) is None
+
+    def test_none_for_unknown_file(self):
+        from cooperbench.agents._coop.territory import reverse_patch_for_violations
+
+        assert reverse_patch_for_violations(self.DIFF, "missing.py", [(1, 5)]) is None

@@ -110,6 +110,65 @@ def files_in_patch(patch_text: str) -> set[str]:
     return {m.group(2) for m in _DIFF_GIT.finditer(patch_text)}
 
 
+def reverse_patch_for_violations(
+    diff_text: str, file: str, violations: list[tuple[int, int]]
+) -> str | None:
+    """Patch containing ONLY ``file``'s hunks whose base intervals overlap a
+    violating interval; ``git apply -R`` of it undoes just those hunks (QA-b
+    per-hunk revert). Returns None if the file isn't in the diff or no hunk
+    overlaps — callers fall back to the whole-file revert.
+    """
+    header: list[str] = []
+    hunks: list[tuple[tuple[int, int], list[str]]] = []
+    in_target = False
+    current_hunk: list[str] | None = None
+    current_range: tuple[int, int] | None = None
+
+    def flush() -> None:
+        nonlocal current_hunk, current_range
+        if current_hunk is not None and current_range is not None:
+            hunks.append((current_range, current_hunk))
+        current_hunk, current_range = None, None
+
+    for line in diff_text.splitlines():
+        m = _DIFF_GIT.match(line)
+        if m:
+            flush()
+            if in_target:
+                break  # target file section ended
+            in_target = m.group(2) == file
+            if in_target:
+                header = [line]
+            continue
+        if not in_target:
+            continue
+        h = _HUNK_HEADER.match(line)
+        if h:
+            flush()
+            start = int(h.group(1))
+            count = int(h.group(2)) if h.group(2) is not None else 1
+            end = start + count if count > 0 else start + 1
+            current_range = (start, end)
+            current_hunk = [line]
+        elif current_hunk is not None:
+            current_hunk.append(line)
+        else:
+            header.append(line)  # index/---/+++ lines before first hunk
+    flush()
+
+    if not header:
+        return None
+    selected = [
+        body
+        for rng, body in hunks
+        if any(rng[0] < v_end and v_start < rng[1] for v_start, v_end in violations)
+    ]
+    if not selected:
+        return None
+    lines = header + [ln for body in selected for ln in body]
+    return "\n".join(lines) + "\n"
+
+
 def territory_violations(patch_text: str, owned_paths) -> list[str]:
     """Sorted list of files the patch touches that are NOT in ``owned_paths``."""
     owned = set(owned_paths)
