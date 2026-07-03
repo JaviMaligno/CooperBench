@@ -237,6 +237,26 @@ diff --git a/test_util.py b/test_util.py
         assert "src/util.py" in filtered
         assert "test_util.py" not in filtered
 
+    def test_filter_removes_go_test_files(self):
+        """Go test convention is *_test.go (e.g. mux_test.go at repo root)."""
+        patch = """diff --git a/mux.go b/mux.go
+--- a/mux.go
++++ b/mux.go
+@@ -1 +1 @@
+-old
++new
+
+diff --git a/mux_test.go b/mux_test.go
+--- a/mux_test.go
++++ b/mux_test.go
+@@ -1 +1 @@
+-test old
++test new
+"""
+        filtered = _filter_test_files(patch)
+        assert "a/mux.go" in filtered
+        assert "mux_test.go" not in filtered
+
     def test_filter_removes_test_directory(self):
         """Test that /test/ directory files are removed."""
         patch = """diff --git a/lib/core.py b/lib/core.py

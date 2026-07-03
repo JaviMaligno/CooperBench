@@ -646,14 +646,14 @@ def _save_summary(
     if eval_stats:
         eval_passed, eval_failed, eval_errors, eval_skipped, eval_results = eval_stats
         total_evaluated = eval_passed + eval_failed + eval_errors
-        summary["pass_rate"] = eval_passed / max(eval_passed + eval_failed, 1)
+        summary["pass_rate"] = eval_passed / max(total_evaluated, 1)
         summary["eval"] = {
             "total_evaluated": total_evaluated,
             "passed": eval_passed,
             "failed": eval_failed,
             "errors": eval_errors,
             "skipped": eval_skipped,
-            "pass_rate": eval_passed / max(eval_passed + eval_failed, 1),
+            "pass_rate": eval_passed / max(total_evaluated, 1),
         }
         # Merge eval pass/fail into individual results
         eval_by_task = {r["task"]: r["status"] for r in eval_results}

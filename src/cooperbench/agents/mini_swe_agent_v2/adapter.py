@@ -256,8 +256,11 @@ class MiniSweAgentV2Runner:
 
             apply_status = apply_patch_in_container(env, starting_patch)
             if apply_status.get("status") == "failed":
-                logger.warning(
-                    f"[{agent_id}] starting_patch failed to apply; continuing from base "
+                # Running from base would silently produce a patch whose
+                # composition with the prior agent's work is meaningless —
+                # the eval would then measure a tree the agent never saw.
+                raise RuntimeError(
+                    f"[{agent_id}] starting_patch failed to apply; aborting task "
                     f"({apply_status.get('output', '')[:300]})"
                 )
 

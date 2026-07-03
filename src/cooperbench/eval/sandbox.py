@@ -3,6 +3,7 @@
 import base64
 import os
 import re
+import shlex
 from pathlib import Path
 
 # Per-test sandbox timeout (seconds). Overridable via env so a hanging
@@ -238,6 +239,20 @@ fi
             merge_status = "clean"
         strategy_used = "naive"
         merged_diff = naive_result["diff"]
+
+        # Step 2b (opt-in, COOPERBENCH_LLM_RESOLVER=1): trivial-conflict
+        # LLM resolver, mirroring the paper's eval (§2.2) which resolves
+        # trivial merge conflicts with a small model when git merge fails.
+        # The OSS release omits that step; without it, conflicted pairs die
+        # at the merge stage even when the two changes are mechanically
+        # compatible. The resolver only handles union-style conflicts and
+        # must GIVEUP on anything semantic — see eval/resolver.py.
+        if merge_status == "conflicts" and os.getenv("COOPERBENCH_LLM_RESOLVER") == "1":
+            resolve_result = _merge_llm_resolve(sb, base_sha)
+            if resolve_result["ok"]:
+                merge_status = "clean"
+                strategy_used = "llm-resolver"
+                merged_diff = resolve_result["diff"]
 
         # Step 3: Compute the merged-tree test result.
         #
@@ -629,6 +644,66 @@ fi
     return {"conflict": conflict, "diff": diff, "output": output}
 
 
+# Bound on conflicted files per merge the resolver will attempt; beyond
+# this the conflict is unlikely to be trivial and cost grows linearly.
+_RESOLVER_MAX_FILES = 5
+
+
+def _merge_llm_resolve(sb: Sandbox, base_sha: str) -> dict:
+    """Redo the naive merge and resolve trivial conflicts with a fixed LLM.
+
+    Only text conflicts with markers are attempted (modify/delete and other
+    structural conflicts are never trivial). Any GIVEUP or error aborts the
+    merge and the pair fails exactly as without the resolver. On success the
+    resolved diff is written to /patches/naive_diff.patch so the downstream
+    clean-merge path picks it up unchanged.
+    """
+    from cooperbench.eval.resolver import has_conflict_markers, resolve_file
+
+    def _abort() -> dict:
+        sb.exec("bash", "-c", "cd /workspace/repo && git merge --abort 2>/dev/null || true")
+        return {"ok": False, "diff": ""}
+
+    sb.exec(
+        "bash",
+        "-c",
+        "cd /workspace/repo && git checkout agent2 2>/dev/null; git merge agent1 --no-commit --no-ff >/dev/null 2>&1 || true",
+    )
+    files_out = sb.exec("bash", "-c", "cd /workspace/repo && git diff --name-only --diff-filter=U")
+    conflicted = [f.strip() for f in files_out.stdout_read().splitlines() if f.strip()]
+    if not conflicted or len(conflicted) > _RESOLVER_MAX_FILES:
+        return _abort()
+
+    for f in conflicted:
+        quoted = shlex.quote(f"./{f}")
+        content = sb.exec("bash", "-c", f"cd /workspace/repo && cat {quoted}").stdout_read()
+        if not has_conflict_markers(content):
+            return _abort()
+        resolved = resolve_file(f, content)
+        if resolved is None:
+            return _abort()
+        encoded = base64.b64encode(resolved.encode()).decode()
+        write = sb.exec("bash", "-c", f"cd /workspace/repo && echo '{encoded}' | base64 -d > {quoted}")
+        if write.returncode != 0:
+            return _abort()
+
+    commit = sb.exec(
+        "bash",
+        "-c",
+        f"""cd /workspace/repo
+git add -A
+git commit -m 'llm-resolved merge' >/dev/null 2>&1 || exit 1
+git diff {base_sha} HEAD > /patches/naive_diff.patch
+echo RESOLVE_OK""",
+    )
+    if "RESOLVE_OK" not in commit.stdout_read():
+        return _abort()
+    diff = sb.exec("cat", "/patches/naive_diff.patch").stdout_read()
+    if not diff.strip():
+        return _abort()
+    return {"ok": True, "diff": diff}
+
+
 def _merge_union(sb: Sandbox, base_sha: str) -> dict:
     """Try union merge strategy."""
     commands = f"""
@@ -766,7 +841,12 @@ def _filter_test_files(patch_content: str) -> str:
         if line.startswith("diff --git"):
             # Check if it's a test file
             is_test_file = (
-                "/test_" in line or "/tests/" in line or "_test.py" in line or "/test/" in line or "tests.py" in line
+                "/test_" in line
+                or "/tests/" in line
+                or "_test.py" in line
+                or "/test/" in line
+                or "tests.py" in line
+                or "_test.go" in line
             )
             skip_until_next_diff = is_test_file
 

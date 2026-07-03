@@ -187,6 +187,15 @@ def _run_gcp_batch(
         setting = run_info["setting"]
         log_dir = run_info["log_dir"]
 
+        # The GCP batch EVAL_SCRIPT only implements solo and coop (naive
+        # merge) composition. For seq/c4 it would silently measure the
+        # naive merge of the two raw patches — the wrong artifact for both.
+        if setting in ("seq", "c4"):
+            raise ValueError(
+                f"GCP batch eval does not support setting '{setting}' "
+                "(sequential composition not implemented in EVAL_SCRIPT); use --backend docker"
+            )
+
         if setting == "solo":
             # Solo mode: single patch for both features
             patch_file = Path(log_dir) / "solo.patch"
@@ -544,7 +553,7 @@ def _save_summary(
         "failed": failed,
         "errors": errors,
         "skipped": skipped,
-        "pass_rate": passed / max(passed + failed, 1),
+        "pass_rate": passed / max(passed + failed + errors, 1),
         "results": results,
     }
     with open(log_dir / "eval_summary.json", "w") as f:

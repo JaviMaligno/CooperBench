@@ -372,6 +372,21 @@ class DefaultAgent:
         self._enforce_territory()
         return observations
 
+    def _revert_file(self, f: str) -> None:
+        """Restore a file to HEAD: tracked files via checkout, new files by
+        deletion (git checkout cannot touch a file HEAD doesn't know about)."""
+        q = shlex.quote(f)
+        self.env.execute(
+            {"command": f"cd /workspace/repo && git reset -q -- {q} 2>/dev/null; git checkout -- {q} 2>/dev/null || rm -f {q}"}
+        )
+
+    def _touched_files(self) -> list[str]:
+        """Files this agent has modified OR created since HEAD (untracked included)."""
+        r = self.env.execute(
+            {"command": "cd /workspace/repo && git diff --name-only HEAD && git ls-files --others --exclude-standard"}
+        )
+        return [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
+
     def _enforce_handshake(self) -> None:
         """C1: until every agent has published a plan, revert this agent's edits.
 
@@ -380,12 +395,11 @@ class DefaultAgent:
         if self._handshake_ledger is None or self._handshake_ledger.gate_open():
             return
         try:
-            r = self.env.execute({"command": "cd /workspace/repo && git diff --name-only HEAD"})
-            touched = [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
+            touched = self._touched_files()
             if not touched:
                 return
             for f in touched:
-                self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
+                self._revert_file(f)
             self.log(f"HANDSHAKE: reverted edits made before plan exchange {touched}")
             self.add_messages(
                 self.model.format_message(
@@ -405,7 +419,7 @@ class DefaultAgent:
 
         No-op unless a shared ledger was injected. Dispatches on territory mode:
         ``file`` (C2, whole-file ownership) or ``line`` (C2b, base-line ranges).
-        v1 enforces tracked-file edits only (new/untracked files are not caught).
+        Covers tracked edits and newly created files (first-touch claims both).
         Never raises — enforcement must not crash a run.
         """
         if self._claim_ledger is None:
@@ -420,15 +434,14 @@ class DefaultAgent:
 
     def _enforce_territory_files(self) -> None:
         """C2 file-level: revert files another agent owns; claim the rest."""
-        r = self.env.execute({"command": "cd /workspace/repo && git diff --name-only HEAD"})
-        touched = [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
+        touched = self._touched_files()
         if not touched:
             return
         violations = self._claim_ledger.claim(self.agent_id, touched)
         if not violations:
             return
         for f in violations:
-            self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
+            self._revert_file(f)
         self.log(f"TERRITORY: reverted out-of-territory edits {violations}")
         owned = ", ".join(f"{f} (owned by {self._claim_ledger.owner(f)})" for f in violations)
         self.add_messages(
@@ -454,7 +467,12 @@ class DefaultAgent:
         """
         from cooperbench.agents._coop.territory import diff_hunk_ranges
 
-        r = self.env.execute({"command": "cd /workspace/repo && git diff HEAD"})
+        # `git add -N` registers intent-to-add so newly created files show up
+        # in `git diff HEAD` as new-file hunks (otherwise they'd be invisible
+        # to line-level enforcement).
+        r = self.env.execute(
+            {"command": "cd /workspace/repo && git add -N . 2>/dev/null; git diff HEAD"}
+        )
         per_file = diff_hunk_ranges(r.get("output") or "")
         if not per_file:
             return
@@ -462,7 +480,7 @@ class DefaultAgent:
         for f, intervals in per_file.items():
             violations = self._claim_ledger.claim(self.agent_id, f, intervals)
             if violations:
-                self.env.execute({"command": f"cd /workspace/repo && git checkout -- {shlex.quote(f)}"})
+                self._revert_file(f)
                 reverted.append(f"{f} (lines {violations})")
         if not reverted:
             return
