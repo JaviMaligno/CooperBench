@@ -176,6 +176,20 @@ runs as eval_resolver.json (baseline eval.json preserved). First validated
 pair: merge rescued, one feature passes 71/71, the other fails a genuine
 test 59/60 — the conflict was masking a real feature failure.
 
+**QA-c batch outcome (2026-07-03, 59 resolver re-evals + 12 go_chi).**
+go_chi filter fix: 0 flips — published table unchanged. Resolver: rescued
+22-23/59 conflicted merges, but only 3 pairs flip to pass → conflicts were
+mostly masking semantic feature failures. FAIR TABLE (resolver applied to
+coop+C1): mini coop 0/19 (unchanged), large coop 2/19 (11%, was 5%), mini
+C1 1/19 (5%), large C1 0/19. Partial credit fair-coop: mini 4×one-feature
+(was 1), large 2×both+4×one. SURVIVES fair eval: coordination gap (pooled
+solo vs fair-coop p=0.008) and seq/c4 recovery (pooled p=0.008). REVISED:
+C2's edge over coop largely dissolves under fair merging (C2-large 3/19 vs
+fair-coop 2/19, near-same tasks) — enforced ownership and a post-hoc
+trivial resolver fix the same *syntactic* layer; seq/c4 (6/19 each) still
+~3× fair-coop because they fix the *semantic* integration layer. Article
+must add the fair-coop row and soften the C2 claim accordingly.
+
 ### Phase combos (mechanism-driven, after QA)
 The mechanism suggests complementarity: C2 eliminates *syntactic* conflicts
 (0/19 merge conflicts) but leaves *semantic* integration failures; C4 (a
