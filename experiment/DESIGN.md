@@ -145,6 +145,37 @@ restart experiment. Do not publish the article until QA lands.
   eval routing) hunting construction bugs like QA-a.
 - **QA-f. Article naming/link.** DONE: C3/C4 codes harmonized, repo linked.
 
+### QA results (2026-07-03)
+
+**QA-e (adversarial code audits, 2 independent agents).** Enforcement side:
+one CRITICAL (new/untracked files escaped handshake+territory enforcement —
+FIXED in deb006a; verified empirically that no published enforced pass
+depended on the leak, 0/4 passes contained new files), race-condition
+findings dismissed (agents run in isolated containers, one env each),
+anchor-line-0 "bug" dismissed (ledger is keyed per file — intended
+behavior). Eval side: CRITICAL latent GCP-batch bug (EVAL_SCRIPT measures
+naive coop merge for seq/c4 — now rejected loudly; all published runs used
+docker, verified uncontaminated), MAJOR *_test.go not filtered from patches
+(FIXED; 12 go_chi pair-evals re-run), MAJOR silent starting_patch failure
+(now aborts; never fired — verified via SHA chaining on all seq/c4 pairs),
+plus pass_rate denominator fixes. Auditors verified the c4 composition fix,
+seq stacking, and C1/C2/C2b eval routing as correct.
+
+**QA-c (merge fairness).** The paper (§2.2) resolves trivial conflicts with
+a small trained model (Qwen 3 Coder 1.5B); the OSS eval release omits it
+(naive git merge + lead-alone fallback only — upstream, we changed nothing).
+Conflict triage of all 29 conflicted coop pairs: mini 6/15 mechanically
+trivial (9/15 counting LLM-resolvable borderline: orthogonal kwargs on the
+same signature, import unions), large 4/14 (6/14 borderline). The rest are
+genuine semantic collisions (one agent refactors what the other edits).
+Remediation: opt-in LLM trivial-conflict resolver (COOPERBENCH_LLM_RESOLVER=1,
+fixed model azure/gpt-5.4-mini — stronger than the paper's, so coop gets
+the benefit of the doubt), GIVEUP on anything semantic, strategy recorded
+as "llm-resolver" in eval.json. Re-eval of all conflicted coop+C1 pairs
+runs as eval_resolver.json (baseline eval.json preserved). First validated
+pair: merge rescued, one feature passes 71/71, the other fails a genuine
+test 59/60 — the conflict was masking a real feature failure.
+
 ### Phase combos (mechanism-driven, after QA)
 The mechanism suggests complementarity: C2 eliminates *syntactic* conflicts
 (0/19 merge conflicts) but leaves *semantic* integration failures; C4 (a
