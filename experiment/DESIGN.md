@@ -113,3 +113,53 @@ store (extend `_coop/coop_msg.py` pattern) + docker integration test.
   Budget cap $200 via `MSWEA_GLOBAL_COST_LIMIT` per batch + `cost_ledger.py`.
 - Helpers in repo root: `azure_env.sh`, `cost_ledger.py`, `oracle_check.py`,
   `dataset/subsets/light_local.json`.
+
+## QA & extensions plan (2026-07-03, post-review)
+
+Order: **QA first** (can change already-written numbers), then combos, then the
+restart experiment. Do not publish the article until QA lands.
+
+### Phase QA — trust the scaffolding before anything else
+- **QA-a. c4 eval composition bug (CRITICAL, in progress).** The integrator
+  starts with patch_a committed, so its `git diff` (vs HEAD) may exclude A's
+  work; eval routes c4 -> test_solo(integrator.patch) against BASE -> feature1
+  can never pass -> suspected false 0%. Empirical check: eval one task as
+  base+patch_a+integrator (== test_sequential). If confirmed: fix evaluate.py
+  c4 routing to compose patch_a + integrator patch, re-eval all c4 (eval-only,
+  $0 Azure). May flip the c4 row at both tiers.
+- **QA-b. C2b v2: per-hunk revert.** Replace the v1 whole-file revert (the
+  "artifact" noted in the article) with reverting ONLY the violating hunks
+  (git apply -R of the offending hunks, or checkout + re-apply non-violating
+  ones). Rerun C2b both tiers (~$10 Azure, docker local).
+- **QA-c. Merge fairness.** "Failing at merge conflicts" may be too cheap a
+  death: the paper mentions an LLM resolver for trivial conflicts; our eval
+  used naive+union strategies. Audit which strategies actually fired in our
+  coop evals (eval.json merge.strategy), check whether the OSS eval includes
+  the LLM resolver, and if not implement/enable it so coop isn't unfairly
+  penalized vs the paper's setup. Re-eval coop-family runs (eval-only, ~$0-2).
+- **QA-d. Repeats for error bars.** 2 extra seeds of the informative cells
+  (solo, coop, C3, C2 x 2 tiers): ~$65 Azure total, docker local. Report
+  mean +/- range; keeps N moderate without being sloppy.
+- **QA-e. Independent scaffolding audit.** Code review (agent, $0) of the five
+  condition implementations (enforcement hook, handshake gate, seq, c4,
+  eval routing) hunting construction bugs like QA-a.
+- **QA-f. Article naming/link.** DONE: C3/C4 codes harmonized, repo linked.
+
+### Phase combos (mechanism-driven, after QA)
+The mechanism suggests complementarity: C2 eliminates *syntactic* conflicts
+(0/19 merge conflicts) but leaves *semantic* integration failures; C4 (a
+reviewer/integrator) is meant to fix exactly those. Combos to test, in order:
+1. **C2 + C4**: territory during development + integrator at merge (the star:
+   each patches the other's failure mode).
+2. **C1 + C2**: plan handshake + enforced territory (plan-then-own).
+3. **C3 + C4**: sequential + final reviewer (does review add anything once
+   sequenced?).
+Estimate per combo: ~$10-15 Azure both tiers, docker local. Success bar: any
+combo beating BOTH its components and approaching/beating solo.
+
+### Phase restart (article 2, fresh session)
+(a) free mining (done: destruction=flailing at short horizon; adaptation after
+imposed restarts is the capability marker), (b) loop-with-evaluator mode:
+visible tests + K iterations + restart affordance, voluntary-restart
+rate/timing/payoff by tier (~$40-60 Azure), (c) restart etiquette in shared
+workspaces (does a restarting agent preserve its partner's work?).
