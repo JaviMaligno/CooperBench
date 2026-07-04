@@ -402,12 +402,20 @@ class DefaultAgent:
             {"command": f"cd /workspace/repo && git reset -q -- {q} 2>/dev/null; git checkout -- {q} 2>/dev/null || rm -f {q}"}
         )
 
+    # Harness artifacts that enforcement must never claim or revert:
+    # patch.txt is each agent's final deliverable (the adapter cats it).
+    _ENFORCEMENT_EXEMPT = frozenset({"patch.txt"})
+
     def _touched_files(self) -> list[str]:
         """Files this agent has modified OR created since HEAD (untracked included)."""
         r = self.env.execute(
             {"command": "cd /workspace/repo && git diff --name-only HEAD && git ls-files --others --exclude-standard"}
         )
-        return [ln.strip() for ln in (r.get("output") or "").splitlines() if ln.strip()]
+        return [
+            ln.strip()
+            for ln in (r.get("output") or "").splitlines()
+            if ln.strip() and ln.strip() not in self._ENFORCEMENT_EXEMPT
+        ]
 
     def _enforce_handshake(self) -> None:
         """C1: until every agent has published a plan, revert this agent's edits.
@@ -496,7 +504,9 @@ class DefaultAgent:
             {"command": "cd /workspace/repo && git add -N . 2>/dev/null; git diff HEAD"}
         )
         diff_text = r.get("output") or ""
-        per_file = diff_hunk_ranges(diff_text)
+        per_file = {
+            f: iv for f, iv in diff_hunk_ranges(diff_text).items() if f not in self._ENFORCEMENT_EXEMPT
+        }
         if not per_file:
             return
         reverted: list[str] = []
