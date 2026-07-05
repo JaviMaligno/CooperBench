@@ -190,6 +190,15 @@ trivial resolver fix the same *syntactic* layer; seq/c4 (6/19 each) still
 ~3× fair-coop because they fix the *semantic* integration layer. Article
 must add the fair-coop row and soften the C2 claim accordingly.
 
+**QA-b outcome (2026-07-05).** C2b v2 (per-hunk revert, commit 631bfb3;
+plus patch.txt exemption after the smoke caught enforcement deleting the
+agents' deliverable) re-run at both tiers: mini 0/19 (partial credit 5 vs
+v1's 10), large 0/19 (v1: 1/19). NOT a revert-granularity artifact — the
+binding constraint is the benchmark's intentional shared-line overlap
+(imports/signatures): exclusive line ownership starves the second agent
+(smoke log: blocked agent negotiated, no reply, submitted nothing).
+Article hedge replaced with the empirical statement (commit cc4e5f7).
+
 ### Phase combos (mechanism-driven, after QA)
 The mechanism suggests complementarity: C2 eliminates *syntactic* conflicts
 (0/19 merge conflicts) but leaves *semantic* integration failures; C4 (a
