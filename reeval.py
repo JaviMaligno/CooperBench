@@ -47,6 +47,14 @@ def eval_pair(pair_dir: Path, mode: str) -> dict:
 
     if setting == "solo":
         result = test_solo(repo, task_id, f1, f2, patch=pair_dir / "solo.patch")
+    elif setting == "c3c4":
+        # sequential pipeline (A, then B on A) + reviewer over the A+B tree
+        result = test_sequential(
+            repo, task_id, f1, f2,
+            patch_a=pair_dir / f"agent{f1}.patch",
+            patch_b=pair_dir / f"agent{f2}.patch",
+            patch_c=pair_dir / "reviewer.patch",
+        )
     elif setting == "seq":
         # seq dirs hold agent{f1}.patch (A) and agent{f2}.patch (B, stacked);
         # c4 dirs additionally hold integrator.patch which replaces B's patch.
