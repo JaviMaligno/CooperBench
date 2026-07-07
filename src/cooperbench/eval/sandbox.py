@@ -421,16 +421,19 @@ def test_sequential(
     feature2_id: int,
     patch_a: str | Path | None = None,
     patch_b: str | Path | None = None,
+    patch_c: str | Path | None = None,
     timeout: int = _EVAL_TIMEOUT,
     backend: str = "docker",
     dataset_dir: Path | str | None = None,
 ) -> dict:
-    """Test a sequential-pipeline result: base + patch_a + patch_b.
+    """Test a stacked-pipeline result: base + patch_a + patch_b (+ patch_c).
 
     In sequential mode agent A implements feature1, then agent B starts from
     A's code and implements feature2, so patch_b is stacked on patch_a.
     Applying A's hunks then B's (from base) reproduces base+A+B, so we compose
-    the two patches and test the combined tree against each feature's suite.
+    the patches and test the combined tree against each feature's suite. The
+    optional patch_c stacks a third stage on top (C3+C4: a reviewer patch over
+    the sequenced A+B tree).
 
     Returns: dict with keys setting, patch_lines, feature1, feature2,
     both_passed, error.
@@ -446,10 +449,7 @@ def test_sequential(
     if not tests2_path.exists():
         return _seq_error_result(f"Tests patch not found: {tests2_path}")
 
-    patch_a_content = _filter_test_files(_load_patch(patch_a) or "")
-    patch_b_content = _filter_test_files(_load_patch(patch_b) or "")
-    parts = [p for p in (patch_a_content.rstrip("\n"), patch_b_content.rstrip("\n")) if p.strip()]
-    combined = ("\n".join(parts) + "\n") if parts else ""
+    combined = compose_filtered_patches(patch_a, patch_b, patch_c)
 
     tests1_content = tests1_path.read_text()
     tests2_content = tests2_path.read_text()
@@ -858,6 +858,22 @@ def _filter_test_files(patch_content: str) -> str:
     if result and not result.endswith("\n"):
         result += "\n"
     return result
+
+
+def compose_filtered_patches(*patches: str | Path | None) -> str:
+    """Concatenate patches (test files stripped) into one applied-from-base diff.
+
+    Used to reproduce a stacked pipeline result: base + A + B (+ reviewer).
+    Each patch is a diff against the tree the previous ones produce, so
+    applying them in order from base reconstructs the final tree. Empty/None
+    parts are skipped; returns "" if nothing survives.
+    """
+    parts = []
+    for p in patches:
+        content = _filter_test_files(_load_patch(p) or "").rstrip("\n")
+        if content.strip():
+            parts.append(content)
+    return ("\n".join(parts) + "\n") if parts else ""
 
 
 def _load_patch(patch: str | Path | None) -> str | None:

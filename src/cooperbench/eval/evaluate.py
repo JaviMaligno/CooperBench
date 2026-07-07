@@ -190,7 +190,7 @@ def _run_gcp_batch(
         # The GCP batch EVAL_SCRIPT only implements solo and coop (naive
         # merge) composition. For seq/c4 it would silently measure the
         # naive merge of the two raw patches — the wrong artifact for both.
-        if setting in ("seq", "c4"):
+        if setting in ("seq", "c4", "c3c4"):
             raise ValueError(
                 f"GCP batch eval does not support setting '{setting}' "
                 "(sequential composition not implemented in EVAL_SCRIPT); use --backend docker"
@@ -422,6 +422,41 @@ def _evaluate_single(
             "task_id": task_id,
             "features": features,
             "setting": "c4",
+            "merge": None,
+            "feature1": result.get("feature1", {}),
+            "feature2": result.get("feature2", {}),
+            "both_passed": result.get("both_passed", False),
+            "error": result.get("error"),
+            "evaluated_at": datetime.now().isoformat(),
+        }
+    elif setting == "c3c4":
+        # Sequential pipeline (A, then B on top of A) followed by a reviewer
+        # that starts from the sequenced A+B tree. Its reviewer.patch is a
+        # delta over A+B, so reproduce its workspace: base + A + B + reviewer.
+        patch_a_file = log_dir / f"agent{f1}.patch"
+        patch_b_file = log_dir / f"agent{f2}.patch"
+        reviewer_file = log_dir / "reviewer.patch"
+        patch_a = patch_a_file.read_text() if patch_a_file.exists() else ""
+        patch_b = patch_b_file.read_text() if patch_b_file.exists() else ""
+        reviewer = reviewer_file.read_text() if reviewer_file.exists() else ""
+
+        result = test_sequential(
+            repo_name=repo,
+            task_id=task_id,
+            feature1_id=f1,
+            feature2_id=f2,
+            patch_a=patch_a,
+            patch_b=patch_b,
+            patch_c=reviewer,
+            backend=backend,
+            dataset_dir=dataset_dir,
+        )
+
+        eval_result = {
+            "repo": repo,
+            "task_id": task_id,
+            "features": features,
+            "setting": "c3c4",
             "merge": None,
             "feature1": result.get("feature1", {}),
             "feature2": result.get("feature2", {}),

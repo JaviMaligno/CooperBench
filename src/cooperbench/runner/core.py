@@ -21,7 +21,7 @@ from rich.table import Table
 
 from cooperbench.infra.redis import ensure_redis
 from cooperbench.runner.coop import execute_coop
-from cooperbench.runner.seq import execute_c4, execute_seq
+from cooperbench.runner.seq import execute_c3c4, execute_c4, execute_seq
 from cooperbench.runner.solo import execute_solo
 from cooperbench.runner.tasks import discover_tasks
 from cooperbench.runner.team import execute_team
@@ -106,13 +106,14 @@ def run(
     is_team = setting == "team"
     is_seq = setting == "seq"
     is_c4 = setting == "c4"
+    is_c3c4 = setting == "c3c4"
 
     _print_header(
         run_name, setting, tasks, agent, model_name, concurrency, is_single, is_solo, git_enabled, messaging_enabled
     )
 
-    # Solo, seq and c4 modes don't need Redis or a git server
-    if not is_solo and not is_seq and not is_c4:
+    # Solo, seq, c4 and c3c4 modes don't need Redis or a git server
+    if not is_solo and not is_seq and not is_c4 and not is_c3c4:
         if messaging_enabled:
             ensure_redis(redis_url)
 
@@ -163,6 +164,21 @@ def run(
             )
         elif is_c4:
             return execute_c4(
+                repo_name=task_info["repo"],
+                task_id=task_info["task_id"],
+                features=task_info["features"],
+                run_name=run_name,
+                agent_name=agent,
+                model_name=model_name,
+                force=force,
+                quiet=not is_single,
+                backend=backend,
+                agent_config=agent_config,
+                dataset_dir=dataset_dir,
+                logs_dir=logs_dir,
+            )
+        elif is_c3c4:
+            return execute_c3c4(
                 repo_name=task_info["repo"],
                 task_id=task_info["task_id"],
                 features=task_info["features"],
