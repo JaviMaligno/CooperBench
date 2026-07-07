@@ -199,6 +199,31 @@ binding constraint is the benchmark's intentional shared-line overlap
 (smoke log: blocked agent negotiated, no reply, submitted nothing).
 Article hedge replaced with the empirical statement (commit cc4e5f7).
 
+### QA-d outcome — 3 seeds, headline cells (2026-07-07, COMPLETE)
+Mean [range] pass-rate over 3 seeds (n=19 each):
+
+| cell | mini | large |
+|------|------|-------|
+| solo | 14% [11–16] | 30% [21–37] |
+| coop | 7% [0–11] | 7% [0–16] |
+| coop+fair-resolver | 7% [0–11] | 9% [0–16] |
+| seq (C3) | 26% [21–37] | 35% [32–37] |
+| c4 (integrator) | 23% [21–26] | 33% [26–42] |
+
+McNemar (paired per task+seed, pooled discordants; caveat: pseudo-replication
+across seeds inflates significance, so cross-check with per-seed counts):
+- gap solo>coop: pooled p=0.002; large p=0.002; mini n.s. (p=0.39, solo already low).
+- seq>coop p<0.0001, c4>coop p<0.0001 (both tiers).
+- **seq>solo: pooled p=0.021; mini p=0.039 (beats, 3/3 seeds); large p=0.45 (ties, 2/3).**
+- c4>solo: pooled p=0.23 (recovers but does not beat solo).
+
+HEADLINE REVISION: with replicates, sequencing does not merely *recover* solo —
+it *beats* solo for the WEAK model (opposite-signed capability interaction to
+C2, which favored the strong one) and ties it for the strong. fair-resolver
+barely moves coop (mini +0, large +2pts over 3 seeds) → conflicts mask semantic
+failures, now robust across seeds. C2/C2b remain single-seed; C2b v2 (per-hunk)
+= 0/19 both tiers. Scripts: aggregate_seeds.py, seed_stats.py.
+
 ### Phase combos (mechanism-driven, after QA)
 The mechanism suggests complementarity: C2 eliminates *syntactic* conflicts
 (0/19 merge conflicts) but leaves *semantic* integration failures; C4 (a
