@@ -236,6 +236,25 @@ reviewer/integrator) is meant to fix exactly those. Combos to test, in order:
 Estimate per combo: ~$10-15 Azure both tiers, docker local. Success bar: any
 combo beating BOTH its components and approaching/beating solo.
 
+### Combo results (2026-07-07)
+
+**C3+C4 (sequential + reviewer) — DONE, deep-analyzed.** Pass: mini 5/19 (26%),
+large 5/19 (26%). Paired McNemar vs each component (combo_analysis.py):
+c3c4 vs seq and c3c4 vs c4 are p=1.000 at BOTH tiers (only-combo vs
+only-component are tiny and symmetric: mini 2/1 & 3/2; large 1/2 & 1/2).
+Reviewer activity: it DOES act (mini 18/19 non-empty, large 19/19; median
+27 / 43 changed lines) — so the null result isn't a passive reviewer. Net
+effect is zero churn: it rescues about as many pairs as it breaks. Revised
+claim (my first read "hurts the strong tier" was noise): reviewing a tree a
+sequential pipeline already integrated is a wash. Bar NOT cleared (doesn't
+beat either component). TODO for cleanest read: re-eval the seq-internal
+tree (patch_a+patch_b, no reviewer) on the SAME A/B to isolate the reviewer
+effect without cross-run nondeterminism (needs docker; run when combos free it).
+
+Gotcha: c3c4-large had 5 docker-run failures from 5 pallets_click task2068
+pairs launching concurrently at c=4; resumed at c=2 -> 0 errors. Use c<=2
+for combos touching task2068.
+
 ### Phase restart (article 2, fresh session)
 (a) free mining (done: destruction=flailing at short horizon; adaptation after
 imposed restarts is the capability marker), (b) loop-with-evaluator mode:
