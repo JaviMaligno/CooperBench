@@ -56,8 +56,11 @@ def paired(a, b):
     return B, C
 
 
+# c1c2 is coop-with-flags, so its logs live under the coop/ subdir.
+COMBO_DIR = "coop" if COMBO == "c1c2" else COMBO
+
 for tier in ("mini", "large"):
-    combo = load(f"F-{tier}-{COMBO}", COMBO)
+    combo = load(f"F-{tier}-{COMBO}", COMBO_DIR)
     if not combo:
         print(f"[{tier}] no {COMBO} data yet")
         continue
@@ -77,7 +80,7 @@ for tier in ("mini", "large"):
     # extra-stage activity
     empty = nonempty = 0
     sizes = []
-    for rp in glob.glob(f"logs/F-{tier}-{COMBO}/{COMBO}/*/*/f*/{EXTRA}"):
+    for rp in glob.glob(f"logs/F-{tier}-{COMBO}/{COMBO_DIR}/*/*/f*/{EXTRA}"):
         n = len([ln for ln in open(rp, errors="ignore").read().splitlines() if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))])
         if n == 0:
             empty += 1
