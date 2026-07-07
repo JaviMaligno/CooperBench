@@ -21,7 +21,7 @@ from rich.table import Table
 
 from cooperbench.infra.redis import ensure_redis
 from cooperbench.runner.coop import execute_coop
-from cooperbench.runner.seq import execute_c3c4, execute_c4, execute_seq
+from cooperbench.runner.seq import execute_c2c4, execute_c3c4, execute_c4, execute_seq
 from cooperbench.runner.solo import execute_solo
 from cooperbench.runner.tasks import discover_tasks
 from cooperbench.runner.team import execute_team
@@ -107,6 +107,7 @@ def run(
     is_seq = setting == "seq"
     is_c4 = setting == "c4"
     is_c3c4 = setting == "c3c4"
+    is_c2c4 = setting == "c2c4"
 
     _print_header(
         run_name, setting, tasks, agent, model_name, concurrency, is_single, is_solo, git_enabled, messaging_enabled
@@ -191,6 +192,23 @@ def run(
                 agent_config=agent_config,
                 dataset_dir=dataset_dir,
                 logs_dir=logs_dir,
+            )
+        elif is_c2c4:
+            return execute_c2c4(
+                repo_name=task_info["repo"],
+                task_id=task_info["task_id"],
+                features=task_info["features"],
+                run_name=run_name,
+                agent_name=agent,
+                model_name=model_name,
+                redis_url=redis_url,
+                force=force,
+                quiet=not is_single,
+                backend=backend,
+                agent_config=agent_config,
+                dataset_dir=dataset_dir,
+                logs_dir=logs_dir,
+                territory_mode=territory_mode,
             )
         elif is_team:
             return execute_team(

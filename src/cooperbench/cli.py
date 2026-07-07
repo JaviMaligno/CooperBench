@@ -157,7 +157,7 @@ def main():
     )
     run_parser.add_argument(
         "--setting",
-        choices=["coop", "solo", "team", "seq", "c4", "c3c4"],
+        choices=["coop", "solo", "team", "seq", "c4", "c3c4", "c2c4"],
         default="coop",
         help="Benchmark setting: coop (N peers), solo (1 agent), team "
         "(N agents with shared task list, lead/member roles, shared "

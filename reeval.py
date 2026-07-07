@@ -55,9 +55,9 @@ def eval_pair(pair_dir: Path, mode: str) -> dict:
             patch_b=pair_dir / f"agent{f2}.patch",
             patch_c=pair_dir / "reviewer.patch",
         )
-    elif setting == "seq":
+    elif setting in ("seq", "c2c4"):
         # seq dirs hold agent{f1}.patch (A) and agent{f2}.patch (B, stacked);
-        # c4 dirs additionally hold integrator.patch which replaces B's patch.
+        # c4/c2c4 dirs additionally hold integrator.patch which replaces B's patch.
         patch_b = pair_dir / "integrator.patch"
         if not patch_b.exists():
             patch_b = pair_dir / f"agent{f2}.patch"

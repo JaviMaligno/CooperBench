@@ -190,7 +190,7 @@ def _run_gcp_batch(
         # The GCP batch EVAL_SCRIPT only implements solo and coop (naive
         # merge) composition. For seq/c4 it would silently measure the
         # naive merge of the two raw patches — the wrong artifact for both.
-        if setting in ("seq", "c4", "c3c4"):
+        if setting in ("seq", "c4", "c3c4", "c2c4"):
             raise ValueError(
                 f"GCP batch eval does not support setting '{setting}' "
                 "(sequential composition not implemented in EVAL_SCRIPT); use --backend docker"
@@ -395,12 +395,13 @@ def _evaluate_single(
             "error": result.get("error"),
             "evaluated_at": datetime.now().isoformat(),
         }
-    elif setting == "c4":
-        # The integrator runs with agent A's patch already COMMITTED in its
-        # container, so integrator.patch (git diff vs HEAD) holds only the
-        # integrator's delta ON TOP of A. Evaluating it alone against base
-        # loses A's work (feature1 can never pass -> false 0%). Reproduce the
-        # integrator's final workspace instead: base + patch_a + integrator.
+    elif setting in ("c4", "c2c4"):
+        # Both end with an integrator that starts from agent A's COMMITTED
+        # patch, so integrator.patch (git diff vs HEAD) is only its delta ON
+        # TOP of A. Evaluating it alone against base loses A's work (feature1
+        # can never pass -> false 0%). Reproduce the integrator's final
+        # workspace instead: base + patch_a + integrator. (c2c4 only differs
+        # from c4 in the development phase — enforced territory vs isolated.)
         patch_a_file = log_dir / f"agent{f1}.patch"
         patch_file = log_dir / "integrator.patch"
         patch_a = patch_a_file.read_text() if patch_a_file.exists() else ""
@@ -421,7 +422,7 @@ def _evaluate_single(
             "repo": repo,
             "task_id": task_id,
             "features": features,
-            "setting": "c4",
+            "setting": setting,
             "merge": None,
             "feature1": result.get("feature1", {}),
             "feature2": result.get("feature2", {}),
