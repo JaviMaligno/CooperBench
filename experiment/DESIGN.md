@@ -255,6 +255,29 @@ Gotcha: c3c4-large had 5 docker-run failures from 5 pallets_click task2068
 pairs launching concurrently at c=4; resumed at c=2 -> 0 errors. Use c<=2
 for combos touching task2068.
 
+### Combo results FINAL (2026-07-08, all deep-analyzed)
+
+| combo | mini | large | vs components |
+|-------|------|-------|---------------|
+| c2c4 (territory+integrator) | 25% [21-26] (3 seeds) | 33% [21-42] (3 seeds) | McNemar p=1.0 vs c4/seq both tiers |
+| c3c4 (seq+reviewer) | 26% (1 seed) | 26% (1 seed) | p=1.0 vs seq/c4 |
+| c1c2 (handshake+territory) | 11% | 11% | beats C1/C2(0%) mini only; < C2 large |
+
+**NO combo robustly beats its components.** c2c4 looked like the star at
+1 seed (large 42%, beats c4 2-0) but the 3rd seed (4/19=21%) collapsed the
+range to [21-42] and pooled McNemar vs c4/seq = p=1.0. The 42% was noise;
+the seeds caught the over-conclusion (exactly their purpose).
+
+**What survives — the honest nuance:** isolate_extra.py (extra stage on the
+SAME A/B, no cross-run noise): c2c4 integrator rescues +8, breaks 0 (net +8);
+c3c4 reviewer +3/-3 (net 0). So the integrator's *contribution is real and
+consistent* — but c2c4 doesn't win on pass-rate because the territory dev
+phase yields no better inputs than c4's isolated dev phase; the integrator
+starts from equally noisy material. c3c4's reviewer nets zero because a
+sequential pipeline already integrated the tree. Mechanism: stacking only
+composes when the stages attack different layers AND the earlier stage
+improves the later stage's inputs — neither combo clears that bar robustly.
+
 ### Phase restart (article 2, fresh session)
 (a) free mining (done: destruction=flailing at short horizon; adaptation after
 imposed restarts is the capability marker), (b) loop-with-evaluator mode:
