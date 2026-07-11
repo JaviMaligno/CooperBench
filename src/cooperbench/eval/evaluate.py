@@ -465,6 +465,48 @@ def _evaluate_single(
             "error": result.get("error"),
             "evaluated_at": datetime.now().isoformat(),
         }
+    elif setting == "team":
+        # Team's shipped artifact is the LEAD's patch: the lead integrates the
+        # member's work (dropped in the shared volume) and submits one patch.
+        # result.json names agents positionally (lead_agent=agent1) but .patch
+        # files are saved by feature id, so map lead -> its feature ->
+        # agent{feature}.patch and evaluate it solo-style. (Treating team as
+        # coop and merging both patches double-applies the member's work, since
+        # the lead's patch already contains it.)
+        import json as _json
+
+        lead_patch = ""
+        rj = log_dir / "result.json"
+        if rj.exists():
+            rd = _json.loads(rj.read_text())
+            lead = rd.get("lead_agent")
+            lead_feat = (rd.get("agents", {}).get(lead, {}) or {}).get("feature_id")
+            if lead_feat:
+                lp = log_dir / f"agent{lead_feat}.patch"
+                lead_patch = lp.read_text() if lp.exists() else ""
+
+        result = test_solo(
+            repo_name=repo,
+            task_id=task_id,
+            feature1_id=f1,
+            feature2_id=f2,
+            patch=lead_patch,
+            backend=backend,
+            dataset_dir=dataset_dir,
+        )
+
+        eval_result = {
+            "repo": repo,
+            "task_id": task_id,
+            "features": features,
+            "setting": "team",
+            "merge": None,
+            "feature1": result.get("feature1", {}),
+            "feature2": result.get("feature2", {}),
+            "both_passed": result.get("both_passed", False),
+            "error": result.get("error"),
+            "evaluated_at": datetime.now().isoformat(),
+        }
     else:
         # Coop evaluation - merge two agent patches
         patch1_file = log_dir / f"agent{f1}.patch"
