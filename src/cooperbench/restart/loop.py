@@ -39,7 +39,7 @@ def _real_decide(model_name):
 
 def execute_restart_loop(
     repo: str, task_id: int, feature_id: int, policy: str, run_name: str,
-    model_name: str, rounds: int = 4, backend: str = "docker",
+    model_name: str, agent_name: str = "mini_swe_agent_v2", rounds: int = 4, backend: str = "docker",
     dataset_dir: Path | str | None = None, logs_dir: Path | str | None = None,
     force: bool = False, quiet: bool = True, spawn_fn=None, eval_fn=None,
     decide_fn=None,
@@ -94,9 +94,10 @@ def execute_restart_loop(
 
         agent = spawn_fn(
             repo_name=repo, task_id=task_id, feature_id=feature_id,
-            agent_name="mini_swe_agent_v2", model_name=model_name,
+            agent_name=agent_name, model_name=model_name,
             agent_id="restart_agent", agents=["restart_agent"], redis_url=None,
             git_server_url=None, git_enabled=False, git_network=None,
+            # single solo agent per round — no partner, so no redis/messaging
             messaging_enabled=False, quiet=quiet, backend=backend,
             agent_config=None, run_name=None, features=[feature_id],
             dataset_dir=dataset_dir, logs_dir=logs_dir,
