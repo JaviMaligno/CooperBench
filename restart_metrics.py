@@ -33,7 +33,8 @@ def load_run(run_name: str) -> dict:
     """feature-key -> result.json dict."""
     out = {}
     for p in glob.glob(f"logs/{run_name}/restart/*/*/f*/result.json"):
-        d = json.load(open(p))
+        with open(p) as f:
+            d = json.load(f)
         out[f"{d['repo']}:{d['task_id']}:{d['feature_id']}"] = d
     return out
 
