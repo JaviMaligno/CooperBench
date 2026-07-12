@@ -108,12 +108,21 @@ full restarts shine — out of scope here (see gates).
 - Conditional payoff: solve-after-restart vs solve-after-persisting in
   comparable test states.
 
-### Anti-shallow-measurement protocol (article 1 lessons)
-- TDD on the runner's pure pieces; 1-task smoke before every batch.
+### Anti-shallow-measurement protocol (article 1 lessons, same rigor)
+- TDD on the runner's pure pieces (reset policies, plateau detection, metrics)
+  with the failing-test-first discipline; wiring validated with a real
+  1-feature docker smoke before every batch.
+- **Independent adversarial code audit before trusting Phase 1 numbers**:
+  a reviewer agent hunts composition/routing bugs in the loop runner and the
+  visible evaluator ($0, same as article 1 — that audit caught the c4 false
+  0% and the team mis-routing). Special attention to the recurring bug class:
+  *what state does each round actually apply/measure* (reset really resets,
+  iterate really carries the diff, feedback really matches the round's tree).
 - Any round 0%/100% cell gets audited before being believed (three false 0%s
   were caught in article 1).
-- Per-round artifacts persisted (patch, test results, decision) so curves can
-  be re-analyzed without re-spending.
+- Per-round artifacts persisted (patch, test results, decision, feedback
+  shown) so curves can be re-analyzed without re-spending; an
+  `isolate`-style re-eval must be possible offline.
 
 ## Stages, gates, and budget
 
