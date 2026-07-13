@@ -181,3 +181,37 @@ Phase 2 calibration as the potential headline.
      policies).
   3. **Metrics aggregator** — per-round curves, plateau detection, McNemar,
      calibration; reads only persisted artifacts.
+
+## Audit outcome (T10, pre-Phase-1 gate) — 2026-07-13
+
+Adversarial audit (independent agent, static + empirical on pilot artifacts):
+initial verdict FAIL with a solid core — 10 items VERIFIED with evidence
+(cumulative composition byte-exact; a solved round's cumulative patch
+re-applied and re-passed in docker via the eval's own path; fresh has zero
+code/prompt leakage; informed summary strictly harness-built; agent-decides
+strip feeds both the adapter and the round's eval; resume rebuilds identical
+results; solved cannot be un-set; no gold-patch fallback on empty patches).
+The pilot itself caught three composition bugs before this audit (missing
+--recount, missing --ignore-whitespace, and last-delta-instead-of-cumulative
+for iterate — the article-1 c4 class; iterate pilot data was discarded and
+re-run after the fix).
+
+Two MAJORs fixed and re-audited (PASS, commits d37fc2c + 929f07d):
+1. Process-global cost cap could truncate features silently (no result.json
+   → vanishing denominators, broken pairing). Now: failure result.json is
+   always persisted (error surfaced, feature stays in the denominator);
+   batch cap 25→60 (safety net, not a guillotine).
+2. Harness-error rounds masqueraded as 0-progress (false plateaus, deflated
+   pass rates). Now: round entries carry the eval error field; metrics
+   exclude error rounds from curves/plateau/gate and surface an errors
+   count (tests.json fallback for pre-fix artifacts; zero-round crashes
+   included).
+
+Minor backlog for analysis time: plateau-vs-regression split in the
+aggregator (raw curves persisted, re-analyzable); pre-check strict-apply
+mirror (round-open tolerant vs eval strict — unobserved in pilot);
+partial-crash features land in plain-fail (conservative direction).
+
+**RE-AUDIT PASS → Phase 1 launch approved.** Pilot gate: USEFUL ZONE
+(first-round solve 42%, plateaus present). Early n=6 signal: iterate 5/6
+vs restart-fresh 3/6 at equal compute.
