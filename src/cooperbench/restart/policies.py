@@ -11,12 +11,38 @@ def _check(policy: str) -> None:
         raise ValueError(f"unknown policy: {policy!r} (expected one of {POLICIES})")
 
 
+def _concat_patches(patches: list[str]) -> str | None:
+    """Concatenate an ordered list of patch deltas into a single composed patch.
+
+    Each iterate round's saved diff is a delta over the previous committed tree
+    (because apply_patch_in_container commits the starting patch before the agent
+    runs). To reconstruct the full working tree from base we must stack all
+    round deltas in order: delta_r1 || delta_r2 || ... || delta_rN.
+
+    Strips trailing whitespace from each part and skips empty strings.
+    Returns None if nothing survives.
+    """
+    parts = [p.rstrip("\n") for p in patches if p and p.strip()]
+    if not parts:
+        return None
+    return "\n".join(parts) + "\n"
+
+
 def starting_patch_for_round(policy: str, history: list[dict]) -> str | None:
+    """Return the starting patch to apply before spawning a new round's agent.
+
+    For iterate/agent-decides: returns the ordered concatenation of ALL history
+    patches (delta stacking) so the container starts from the correct cumulative
+    tree, not just the last round's delta.
+
+    For restart-fresh/restart-informed: always returns None (fresh checkout).
+    """
     _check(policy)
     if not history:
         return None
     if policy in ("iterate", "agent-decides"):
-        return history[-1]["patch"] or None
+        patches = [h["patch"] for h in history]
+        return _concat_patches(patches)
     return None
 
 

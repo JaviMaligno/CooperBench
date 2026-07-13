@@ -7,7 +7,7 @@ from pathlib import Path
 from cooperbench.agents._coop.territory import files_in_patch
 from cooperbench.restart.decision import build_decision_prompt, parse_decision, strip_paths_from_patch
 from cooperbench.restart.feedback import format_feedback
-from cooperbench.restart.policies import build_round_task, starting_patch_for_round
+from cooperbench.restart.policies import _concat_patches, build_round_task, starting_patch_for_round
 from cooperbench.runner.tasks import DEFAULT_DATASET_DIR, DEFAULT_LOGS_DIR
 
 
@@ -104,15 +104,24 @@ def execute_restart_loop(
             starting_patch=starting_patch, task_override=task,
         )
         patch = agent.get("patch", "") or ""
-        tests = eval_fn(repo, task_id, feature_id, patch,
+        # Build cumulative patch for eval: what the round started from + this round's delta.
+        # For fresh/informed: starting_patch is None so cumulative = just this round's patch.
+        # For iterate/agent-decides: starting_patch is the composed prior history, so
+        # cumulative = full working tree from base, which is what the evaluator needs.
+        cumulative = _concat_patches(
+            [p for p in [starting_patch, patch] if p and p.strip()]
+        ) or ""
+        tests = eval_fn(repo, task_id, feature_id, cumulative,
                         backend=backend, dataset_dir=dataset_dir)
         (round_dir / "attempt.patch").write_text(patch)
+        (round_dir / "cumulative.patch").write_text(cumulative)
         (round_dir / "tests.json").write_text(json.dumps(tests, indent=2))
         (round_dir / "feedback.txt").write_text(format_feedback(tests, round_idx))
         (round_dir / "agent.json").write_text(json.dumps({
             "status": agent.get("status"), "cost": agent.get("cost", 0),
             "steps": agent.get("steps", 0),
         }, indent=2))
+        # Save the raw delta (not cumulative) in history — _concat_patches needs individual deltas.
         history.append({"round": round_idx, "patch": patch, "tests": tests,
                         "cost": agent.get("cost", 0)})
         solved = bool(tests.get("passed"))
