@@ -2,7 +2,7 @@
 # Stage 2 (~$15-20 Azure / $0 Modal, 4-6 h): agent-decides × 2 tiers.
 set -u
 cd "$(dirname "$0")"
-export MSWEA_GLOBAL_COST_LIMIT=25
+export MSWEA_GLOBAL_COST_LIMIT=60
 for tier_model in "mini azure/gpt-5.4-mini" "large azure/gpt-5.4"; do
   set -- $tier_model
   echo "=== $(date '+%m-%d %H:%M') START R-$1-agent-decides ==="

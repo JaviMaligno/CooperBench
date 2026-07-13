@@ -8,10 +8,33 @@ import argparse
 import glob
 import json
 import math
+from pathlib import Path
 
 
-def curve(rounds: list[dict]) -> list[int]:
-    return [r.get("tests_passed") or 0 for r in rounds]
+def _round_error(round_entry: dict, log_dir: str | None = None) -> str | None:
+    """Return the error string for a round entry, with fallback to tests.json for old artifacts."""
+    # New-style: error key present in the round entry
+    if "error" in round_entry:
+        return round_entry["error"] or None
+    # Old-style fallback: read tests.json from artifact dir
+    if log_dir:
+        tests_path = Path(log_dir) / f"round_{round_entry['round']}" / "tests.json"
+        if tests_path.exists():
+            try:
+                tests = json.loads(tests_path.read_text())
+                return tests.get("error") or None
+            except Exception:
+                pass
+    return None
+
+
+def curve(rounds: list[dict], log_dir: str | None = None) -> list[int]:
+    """Return tests_passed values, excluding rounds with errors."""
+    return [
+        r.get("tests_passed") or 0
+        for r in rounds
+        if not _round_error(r, log_dir)
+    ]
 
 
 def is_plateau(c: list[int], window: int = 2, solved: bool = False) -> bool:
@@ -39,18 +62,29 @@ def load_run(run_name: str) -> dict:
     return out
 
 
+def _is_all_errors(r: dict) -> bool:
+    """True if every round in this result has an error (harness error, not solve failure)."""
+    rounds = r.get("rounds", [])
+    if not rounds:
+        return False
+    log_dir = r.get("log_dir")
+    return all(_round_error(rnd, log_dir) for rnd in rounds)
+
+
 def summarize(run_name: str, results: dict) -> None:
     n = len(results)
     solved = [r for r in results.values() if r["solved"]]
+    errors_count = sum(1 for r in results.values() if not r["solved"] and _is_all_errors(r))
     plateaus = sum(
         1 for r in results.values()
-        if is_plateau(curve(r["rounds"]), solved=r["solved"])
+        if is_plateau(curve(r["rounds"], r.get("log_dir")), solved=r["solved"])
     )
     first_round = sum(1 for r in results.values() if r.get("solve_round") == 1)
     mean_rounds = (sum(r["solve_round"] for r in solved) / len(solved)) if solved else 0
     mean_cost = (sum(r["total_cost"] for r in solved) / len(solved)) if solved else 0
     print(f"{run_name}: solved {len(solved)}/{n} "
           f"(first-round {first_round}/{n}) | plateaus {plateaus}/{n} | "
+          f"errors {errors_count}/{n} | "
           f"mean rounds-to-solve {mean_rounds:.1f} | mean $-to-solve {mean_cost:.2f}")
 
 
@@ -85,7 +119,10 @@ def main() -> None:
         allr = [r for res in runs.values() for r in res.values()]
         n = len(allr)
         fr = sum(1 for r in allr if r.get("solve_round") == 1) / max(n, 1)
-        pl = sum(1 for r in allr if is_plateau(curve(r["rounds"]), solved=r["solved"]))
+        pl = sum(
+            1 for r in allr
+            if is_plateau(curve(r["rounds"], r.get("log_dir")), solved=r["solved"])
+        )
         verdict = "USEFUL ZONE" if 0.2 <= fr <= 0.6 and pl >= 1 else (
             "TOO EASY (escalate)" if fr > 0.6 else "TOO HARD/NO SIGNAL (escalate)")
         print(f"GATE: first-round solve {fr:.0%}, plateaus {pl}/{n} -> {verdict}")

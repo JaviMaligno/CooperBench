@@ -29,7 +29,7 @@ agent and measures metacognition against Phase 1's ground truth.
 
 - Unit: a **single feature** from CooperBench flash_amd64 (no pairs — no
   collaboration here). Pool: all distinct features across its 9 tasks / 5
-  repos, ~20-25 features (exact count fixed at implementation and frozen for
+  repos, 29 features (exact count fixed at implementation and frozen for
   all conditions).
 - Models: `azure/gpt-5.4-mini` (weak) and `azure/gpt-5.4` (strong), native
   litellm route via `azure_env.sh`, docker backend, redis on 6398.
@@ -134,7 +134,7 @@ gate to pass.
 | stage | what | est. Azure | est. wall time |
 |-------|------|-----------|----------------|
 | 0. Pilot gate | 6 features × {ITERATE, RESTART-FRESH} × strong × K=4 | ~$7 | 1-2 h |
-| 1. Policy A/B/C | full pool × 3 policies × 2 tiers × K=4 | ~$35-45 | 8-12 h |
+| 1. Policy A/B/C | full pool × 3 policies × 2 tiers × K=4 | ~$45-55 | 8-12 h |
 | 2. Agent decision | full pool × decision mode × 2 tiers | ~$15-20 | 4-6 h |
 | 3. Seeds | 2 extra seeds of the headline contrast | ~$20-25 | ~6 h |
 

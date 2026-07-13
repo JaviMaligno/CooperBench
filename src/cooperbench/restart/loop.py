@@ -64,10 +64,11 @@ def execute_restart_loop(
         if (round_dir / "tests.json").exists() and (round_dir / "attempt.patch").exists():
             agent_path = round_dir / "agent.json"
             agent_data = json.loads(agent_path.read_text()) if agent_path.exists() else {}
+            tests_data = json.loads((round_dir / "tests.json").read_text())
             history.append({
                 "round": round_idx,
                 "patch": (round_dir / "attempt.patch").read_text(),
-                "tests": json.loads((round_dir / "tests.json").read_text()),
+                "tests": tests_data,
                 "cost": agent_data.get("cost", 0),
             })
         else:
@@ -75,56 +76,80 @@ def execute_restart_loop(
 
     solved = any(item["tests"].get("passed") for item in history)
     start = datetime.now()
-    while not solved and len(history) < rounds:
-        round_idx = len(history) + 1
-        round_dir = log_dir / f"round_{round_idx}"
-        round_dir.mkdir(parents=True, exist_ok=True)
-        starting_patch = starting_patch_for_round(policy, history)
-        task = build_round_task(policy, base_task, history)
+    try:
+        while not solved and len(history) < rounds:
+            round_idx = len(history) + 1
+            round_dir = log_dir / f"round_{round_idx}"
+            round_dir.mkdir(parents=True, exist_ok=True)
+            starting_patch = starting_patch_for_round(policy, history)
+            task = build_round_task(policy, base_task, history)
 
-        if policy == "agent-decides" and history:
-            feedback = format_feedback(history[-1]["tests"], history[-1]["round"])
-            touched = sorted(files_in_patch(history[-1]["patch"]))
-            decision = decide_fn(feedback, touched)
-            (round_dir / "decision.json").write_text(json.dumps(decision, indent=2))
-            if decision.get("action") == "restart":
-                starting_patch = strip_paths_from_patch(
-                    starting_patch or "", decision["scope"], decision.get("path")
-                ) or None
+            if policy == "agent-decides" and history:
+                feedback = format_feedback(history[-1]["tests"], history[-1]["round"])
+                touched = sorted(files_in_patch(history[-1]["patch"]))
+                decision = decide_fn(feedback, touched)
+                (round_dir / "decision.json").write_text(json.dumps(decision, indent=2))
+                if decision.get("action") == "restart":
+                    starting_patch = strip_paths_from_patch(
+                        starting_patch or "", decision["scope"], decision.get("path")
+                    ) or None
 
-        agent = spawn_fn(
-            repo_name=repo, task_id=task_id, feature_id=feature_id,
-            agent_name=agent_name, model_name=model_name,
-            agent_id="restart_agent", agents=["restart_agent"], redis_url=None,
-            git_server_url=None, git_enabled=False, git_network=None,
-            # single solo agent per round — no partner, so no redis/messaging
-            messaging_enabled=False, quiet=quiet, backend=backend,
-            agent_config=None, run_name=None, features=[feature_id],
-            dataset_dir=dataset_dir, logs_dir=logs_dir,
-            starting_patch=starting_patch, task_override=task,
-        )
-        patch = agent.get("patch", "") or ""
-        # Build cumulative patch for eval: what the round started from + this round's delta.
-        # For fresh/informed: starting_patch is None so cumulative = just this round's patch.
-        # For iterate/agent-decides: starting_patch is the composed prior history, so
-        # cumulative = full working tree from base, which is what the evaluator needs.
-        cumulative = _concat_patches(
-            [p for p in [starting_patch, patch] if p and p.strip()]
-        ) or ""
-        tests = eval_fn(repo, task_id, feature_id, cumulative,
-                        backend=backend, dataset_dir=dataset_dir)
-        (round_dir / "attempt.patch").write_text(patch)
-        (round_dir / "cumulative.patch").write_text(cumulative)
-        (round_dir / "tests.json").write_text(json.dumps(tests, indent=2))
-        (round_dir / "feedback.txt").write_text(format_feedback(tests, round_idx))
-        (round_dir / "agent.json").write_text(json.dumps({
-            "status": agent.get("status"), "cost": agent.get("cost", 0),
-            "steps": agent.get("steps", 0),
-        }, indent=2))
-        # Save the raw delta (not cumulative) in history — _concat_patches needs individual deltas.
-        history.append({"round": round_idx, "patch": patch, "tests": tests,
-                        "cost": agent.get("cost", 0)})
-        solved = bool(tests.get("passed"))
+            agent = spawn_fn(
+                repo_name=repo, task_id=task_id, feature_id=feature_id,
+                agent_name=agent_name, model_name=model_name,
+                agent_id="restart_agent", agents=["restart_agent"], redis_url=None,
+                git_server_url=None, git_enabled=False, git_network=None,
+                # single solo agent per round — no partner, so no redis/messaging
+                messaging_enabled=False, quiet=quiet, backend=backend,
+                agent_config=None, run_name=None, features=[feature_id],
+                dataset_dir=dataset_dir, logs_dir=logs_dir,
+                starting_patch=starting_patch, task_override=task,
+            )
+            patch = agent.get("patch", "") or ""
+            # Build cumulative patch for eval: what the round started from + this round's delta.
+            # For fresh/informed: starting_patch is None so cumulative = just this round's patch.
+            # For iterate/agent-decides: starting_patch is the composed prior history, so
+            # cumulative = full working tree from base, which is what the evaluator needs.
+            cumulative = _concat_patches(
+                [p for p in [starting_patch, patch] if p and p.strip()]
+            ) or ""
+            tests = eval_fn(repo, task_id, feature_id, cumulative,
+                            backend=backend, dataset_dir=dataset_dir)
+            (round_dir / "attempt.patch").write_text(patch)
+            (round_dir / "cumulative.patch").write_text(cumulative)
+            # MINOR-1: write agent.json BEFORE tests.json so resume never loads a round
+            # whose agent.json is missing.
+            (round_dir / "agent.json").write_text(json.dumps({
+                "status": agent.get("status"), "cost": agent.get("cost", 0),
+                "steps": agent.get("steps", 0),
+            }, indent=2))
+            (round_dir / "tests.json").write_text(json.dumps(tests, indent=2))
+            (round_dir / "feedback.txt").write_text(format_feedback(tests, round_idx))
+            # Save the raw delta (not cumulative) in history — _concat_patches needs individual deltas.
+            history.append({"round": round_idx, "patch": patch, "tests": tests,
+                            "cost": agent.get("cost", 0)})
+            solved = bool(tests.get("passed"))
+
+    except Exception as exc:
+        # MAJOR-1: persist a failure result.json so nothing vanishes from denominators.
+        failure_result = {
+            "repo": repo, "task_id": task_id, "feature_id": feature_id,
+            "policy": policy, "model": model_name, "rounds_run": len(history),
+            "solved": False, "solve_round": None,
+            "total_cost": sum(item["cost"] for item in history),
+            "rounds": [{
+                "round": item["round"], "passed": item["tests"].get("passed"),
+                "tests_passed": item["tests"].get("tests_passed"),
+                "tests_failed": item["tests"].get("tests_failed"),
+                "error": item["tests"].get("error"),
+                "cost": item["cost"],
+            } for item in history],
+            "started_at": start.isoformat(), "ended_at": datetime.now().isoformat(),
+            "log_dir": str(log_dir),
+            "error": str(exc)[:300],
+        }
+        result_file.write_text(json.dumps(failure_result, indent=2))
+        raise
 
     solve_round = next((item["round"] for item in history
                         if item["tests"].get("passed")), None)
@@ -136,7 +161,9 @@ def execute_restart_loop(
         "rounds": [{
             "round": item["round"], "passed": item["tests"].get("passed"),
             "tests_passed": item["tests"].get("tests_passed"),
-            "tests_failed": item["tests"].get("tests_failed"), "cost": item["cost"],
+            "tests_failed": item["tests"].get("tests_failed"),
+            "error": item["tests"].get("error"),
+            "cost": item["cost"],
         } for item in history],
         "started_at": start.isoformat(), "ended_at": datetime.now().isoformat(),
         "log_dir": str(log_dir),

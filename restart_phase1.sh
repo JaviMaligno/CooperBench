@@ -3,7 +3,7 @@
 # Resumable; relaunch after interruptions. Usage: source azure_env.sh && bash restart_phase1.sh
 set -u
 cd "$(dirname "$0")"
-export MSWEA_GLOBAL_COST_LIMIT=25
+export MSWEA_GLOBAL_COST_LIMIT=60
 for tier_model in "mini azure/gpt-5.4-mini" "large azure/gpt-5.4"; do
   set -- $tier_model
   for policy in iterate restart-fresh restart-informed; do

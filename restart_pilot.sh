@@ -3,7 +3,7 @@
 # {iterate, restart-fresh} × strong tier × K=4, then the gate verdict.
 set -u
 cd "$(dirname "$0")"
-export MSWEA_GLOBAL_COST_LIMIT=25
+export MSWEA_GLOBAL_COST_LIMIT=60
 run() {
   echo "=== $(date '+%m-%d %H:%M') START $1 (policy=$2) ==="
   .venv/bin/python restart_run.py --run-name "$1" --model azure/gpt-5.4 \

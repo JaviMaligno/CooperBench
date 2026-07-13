@@ -194,3 +194,40 @@ class TestAgentDecides:
         base = tmp_path / "logs" / "T" / "restart" / "repo_x" / "1" / "f2"
         decision = json.loads((base / "round_2" / "decision.json").read_text())
         assert decision["action"] == "restart" and decision["scope"] == "all"
+
+
+class TestExceptionPersistence:
+    def test_exception_persists_failure_result_and_reraises(self, tmp_path):
+        """spawn_fn raising on round 2 → result.json exists with error + rounds_run==1, exception propagates."""
+        feature_dir = tmp_path / "ds" / "repo_x" / "task1" / "feature2"
+        feature_dir.mkdir(parents=True, exist_ok=True)
+        (feature_dir / "feature.md").write_text("## Your Task\nDo X.")
+
+        calls = {"n": 0}
+
+        def spawn_fn(*, task_override, starting_patch, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("cost cap exceeded")
+            return {"status": "Submitted", "patch": PATCH_R % calls["n"],
+                    "cost": 0.01, "steps": 3, "messages": []}
+
+        def eval_fn(repo, task_id, feature_id, patch, **kwargs):
+            return {"passed": False, "tests_passed": 2, "tests_failed": 3,
+                    "output": "FAILED", "error": None}
+
+        import pytest
+        with pytest.raises(RuntimeError, match="cost cap exceeded"):
+            execute_restart_loop(
+                "repo_x", 1, 2, "iterate", run_name="T_exc", model_name="fake",
+                rounds=4, dataset_dir=tmp_path / "ds", logs_dir=tmp_path / "logs",
+                spawn_fn=spawn_fn, eval_fn=eval_fn,
+            )
+
+        result_file = tmp_path / "logs" / "T_exc" / "restart" / "repo_x" / "1" / "f2" / "result.json"
+        assert result_file.exists(), "result.json must be written on exception"
+        result = json.loads(result_file.read_text())
+        assert result["solved"] is False
+        assert result["rounds_run"] == 1
+        assert "error" in result
+        assert "cost cap exceeded" in result["error"]
