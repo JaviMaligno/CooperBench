@@ -160,11 +160,14 @@ def apply_patch_in_container(env: ContainerEnv, patch_content: str) -> dict[str,
     Fallback chain (mirrors the eval's sandbox.py runner so any patch the eval
     can measure can also be re-applied here):
 
-    1. ``git apply``          — fast path, requires a well-formed patch.
-    2. ``git apply --recount`` — fixes miscounted hunk headers that agent LLMs
+    1. ``git apply --ignore-whitespace --ignore-space-change``
+                                 — fast path with whitespace tolerance, mirrors eval runner.
+    2. ``git apply --recount --ignore-whitespace --ignore-space-change``
+                                 — fixes miscounted hunk headers that agent LLMs
                                  frequently emit; the eval tolerates these via the
-                                 same flag (see sandbox.py:194-195).
-    3. ``git apply --3way``   — last resort for context-line drift across commits.
+                                 same flags (see sandbox.py:194-195).
+    3. ``git apply --3way --ignore-whitespace --ignore-space-change``
+                                 — last resort for context-line drift across commits.
 
     Returns ``{"status": "applied"|"skipped"|"failed", "output": str}``.
     """
@@ -180,9 +183,9 @@ def apply_patch_in_container(env: ContainerEnv, patch_content: str) -> dict[str,
         "cd /workspace/repo && "
         'git config user.email "seq@cooperbench.local" && '
         'git config user.name "CooperBench Seq" && '
-        "if git apply /tmp/starting.patch 2>&1; then APPLIED=1; "
-        "elif git apply --recount /tmp/starting.patch 2>&1; then APPLIED=1; "
-        "elif git apply --3way /tmp/starting.patch 2>&1; then APPLIED=1; "
+        "if git apply --ignore-whitespace --ignore-space-change /tmp/starting.patch 2>&1; then APPLIED=1; "
+        "elif git apply --recount --ignore-whitespace --ignore-space-change /tmp/starting.patch 2>&1; then APPLIED=1; "
+        "elif git apply --3way --ignore-whitespace --ignore-space-change /tmp/starting.patch 2>&1; then APPLIED=1; "
         "else APPLIED=0; fi && "
         'if [ "$APPLIED" = 1 ]; then '
         "  git add -A && git commit -q -m 'Agent A changes' && echo SEQ_APPLIED; "

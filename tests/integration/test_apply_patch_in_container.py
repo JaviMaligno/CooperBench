@@ -107,3 +107,53 @@ def test_applies_patch_with_wrong_hunk_count():
         assert "foo" in content, f"Missing 'foo' in:\n{content}"
     finally:
         env.cleanup()
+
+
+@pytest.mark.docker
+def test_applies_patch_with_whitespace_drift_in_context():
+    """Patch with altered whitespace in context lines is accepted via --ignore-whitespace.
+
+    The eval's run_tests.sh applies patches with --ignore-whitespace
+    --ignore-space-change, so apply_patch_in_container must do the same
+    to ensure patches that the eval measured can be re-applied when opening
+    the next sequential round. This test verifies that a patch with context-line
+    whitespace drift (e.g., trailing spaces or indentation changes) succeeds.
+    """
+    image = get_image_name("llama_index_task", 17244)
+    env = build_environment(image, backend="docker", timeout=300)
+    try:
+        # Create a file with well-defined indentation and commit it.
+        setup = (
+            "cd /workspace/repo && "
+            "git config user.email 'test@cooperbench.local' && "
+            "git config user.name 'Test' && "
+            "printf 'def foo():\\n    x = 1\\n    y = 2\\n' > code.py && "
+            "git add code.py && "
+            "git commit -q -m 'add code.py'"
+        )
+        env.execute({"command": setup})
+
+        # Create a patch where the context line has altered indentation (adds trailing space).
+        # Without --ignore-whitespace, git apply rejects this; with the flag, it succeeds.
+        whitespace_drift_patch = (
+            "diff --git a/code.py b/code.py\n"
+            "index abc123..def456 100644\n"
+            "--- a/code.py\n"
+            "+++ b/code.py\n"
+            "@@ -1,3 +1,3 @@\n"
+            " def foo():\n"
+            "-    x = 1\n"  # old: no trailing space
+            "+    x = 10  \n"  # new: add trailing space to context line in context
+            "     y = 2\n"  # context: has been altered to have trailing space
+        )
+
+        result = apply_patch_in_container(env, whitespace_drift_patch)
+        assert result["status"] == "applied", (
+            f"Expected 'applied' but got {result['status']!r}. Output:\n{result['output']}"
+        )
+
+        # Verify the change was applied.
+        content = env.execute({"command": "cat /workspace/repo/code.py"})["output"]
+        assert "x = 10" in content, f"Missing 'x = 10' in:\n{content}"
+    finally:
+        env.cleanup()
