@@ -155,8 +155,16 @@ def apply_patch_in_container(env: ContainerEnv, patch_content: str) -> dict[str,
 
     Used by sequential mode so agent B starts from agent A's committed code:
     once A's patch is committed, B's own ``git diff`` comes out stacked on top
-    of A (no later merge needed). Falls back to a 3-way apply when a plain apply
-    is rejected. An empty patch is a no-op.
+    of A (no later merge needed). An empty patch is a no-op.
+
+    Fallback chain (mirrors the eval's sandbox.py runner so any patch the eval
+    can measure can also be re-applied here):
+
+    1. ``git apply``          — fast path, requires a well-formed patch.
+    2. ``git apply --recount`` — fixes miscounted hunk headers that agent LLMs
+                                 frequently emit; the eval tolerates these via the
+                                 same flag (see sandbox.py:194-195).
+    3. ``git apply --3way``   — last resort for context-line drift across commits.
 
     Returns ``{"status": "applied"|"skipped"|"failed", "output": str}``.
     """
@@ -164,12 +172,16 @@ def apply_patch_in_container(env: ContainerEnv, patch_content: str) -> dict[str,
     if not patch:
         return {"status": "skipped", "output": ""}
 
-    write_file_in_container(env, "/tmp/starting.patch", patch)
+    # write_file_in_container's heredoc appends its own "\n" before the sentinel,
+    # so pass the patch without its trailing newline to avoid a double-blank-line
+    # at the end of the file (which breaks ``git apply --recount``).
+    write_file_in_container(env, "/tmp/starting.patch", patch.rstrip("\n"))
     cmd = (
         "cd /workspace/repo && "
         'git config user.email "seq@cooperbench.local" && '
         'git config user.name "CooperBench Seq" && '
         "if git apply /tmp/starting.patch 2>&1; then APPLIED=1; "
+        "elif git apply --recount /tmp/starting.patch 2>&1; then APPLIED=1; "
         "elif git apply --3way /tmp/starting.patch 2>&1; then APPLIED=1; "
         "else APPLIED=0; fi && "
         'if [ "$APPLIED" = 1 ]; then '

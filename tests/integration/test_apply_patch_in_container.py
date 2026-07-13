@@ -55,3 +55,55 @@ def test_empty_patch_is_skipped():
         assert head == base  # nothing committed
     finally:
         env.cleanup()
+
+
+@pytest.mark.docker
+def test_applies_patch_with_wrong_hunk_count():
+    """Patch with a miscounted hunk header is accepted via --recount fallback.
+
+    The hunk header claims ``@@ -1,3 +1,5 @@`` (3 old-side lines) but the
+    old file only has 1 line.  Plain ``git apply`` rejects this with exit 128
+    ("corrupt patch at line N"); ``git apply --recount`` rebuilds the counts
+    from the body and accepts it, adding the two new lines correctly.  This
+    mirrors the class of malformed patches agent LLMs emit that the eval
+    tolerates in sandbox.py via ``--recount``.
+    """
+    image = get_image_name("llama_index_task", 17244)
+    env = build_environment(image, backend="docker", timeout=300)
+    try:
+        # Create a one-line file and commit it as starting state.
+        setup = (
+            "cd /workspace/repo && "
+            "git config user.email 'test@cooperbench.local' && "
+            "git config user.name 'Test' && "
+            "echo 'hello' > hello.txt && "
+            "git add hello.txt && "
+            "git commit -q -m 'add hello.txt'"
+        )
+        env.execute({"command": setup})
+
+        # Hunk header claims old side has 3 lines (-1,3) but the file only has
+        # 1 line — plain `git apply` exits 128 ("corrupt patch"); --recount
+        # ignores the header counts, rebuilds them from the body, and succeeds.
+        bad_patch = (
+            "diff --git a/hello.txt b/hello.txt\n"
+            "index ce01362..f9c4e8c 100644\n"
+            "--- a/hello.txt\n"
+            "+++ b/hello.txt\n"
+            "@@ -1,3 +1,5 @@\n"  # wrong: old side claims 3 lines; file has 1
+            " hello\n"
+            "+world\n"
+            "+foo\n"
+        )
+
+        result = apply_patch_in_container(env, bad_patch)
+        assert result["status"] == "applied", (
+            f"Expected 'applied' but got {result['status']!r}. Output:\n{result['output']}"
+        )
+
+        # The file content must reflect both added lines.
+        content = env.execute({"command": "cat /workspace/repo/hello.txt"})["output"]
+        assert "world" in content, f"Missing 'world' in:\n{content}"
+        assert "foo" in content, f"Missing 'foo' in:\n{content}"
+    finally:
+        env.cleanup()
