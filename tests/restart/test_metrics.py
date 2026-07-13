@@ -92,6 +92,22 @@ class TestSummarizeErrors:
         captured = capsys.readouterr()
         assert "errors 0" in captured.out
 
+    def test_zero_round_crash_with_error_in_errors_count(self, capsys):
+        """A feature with rounds: [] and top-level error appears in errors count."""
+        from restart_metrics import summarize
+        results = {
+            "repo:1:1": {
+                "solved": False,
+                "solve_round": None,
+                "total_cost": 0.0,
+                "error": "boom",
+                "rounds": [],
+            }
+        }
+        summarize("test-run", results)
+        captured = capsys.readouterr()
+        assert "errors 1" in captured.out
+
 
 class TestOldStyleFallback:
     def test_old_result_json_fallback_to_tests_json(self, tmp_path):

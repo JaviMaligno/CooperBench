@@ -66,7 +66,8 @@ def _is_all_errors(r: dict) -> bool:
     """True if every round in this result has an error (harness error, not solve failure)."""
     rounds = r.get("rounds", [])
     if not rounds:
-        return False
+        # No rounds: check for top-level error (e.g., crash before any round completed)
+        return "error" in r and r["error"] is not None
     log_dir = r.get("log_dir")
     return all(_round_error(rnd, log_dir) for rnd in rounds)
 
