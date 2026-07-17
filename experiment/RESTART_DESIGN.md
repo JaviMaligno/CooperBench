@@ -215,3 +215,28 @@ partial-crash features land in plain-fail (conservative direction).
 **RE-AUDIT PASS → Phase 1 launch approved.** Pilot gate: USEFUL ZONE
 (first-round solve 42%, plateaus present). Early n=6 signal: iterate 5/6
 vs restart-fresh 3/6 at equal compute.
+
+## Final results (3 seeds, 2026-07-17)
+
+| policy | mini | large |
+|--------|------|-------|
+| iterate | 74% [72-76] | 86% [79-90] |
+| restart-fresh | 63% [62-66] | 69% [69-69] |
+| agent-decides | 75% [69-79] | **91% [90-93]** |
+| restart-informed (1 seed) | 69% | 79% |
+
+McNemar pooled across 3 seeds (paired per feature+seed):
+- large iterate > fresh p=0.001 (17-2); mini p=0.078 (15-6): iterating with
+  feedback beats clean best-of-K at equal compute.
+- large agent-decides > fresh p<0.001 (19-0); vs iterate p=0.39 (8-4): the
+  decision never hurts and tops both tiers, but the bulk of the value is
+  in iterating.
+- Restart STYLE is the capability marker: large restarts rarely and
+  surgically (7 restarts, 5/7 file-scoped, payoff 3/4 restarted features
+  solved); mini restarts often and razes (34 restarts, 23/34 scope=all,
+  payoff 1/14).
+- informed sits between fresh and iterate → the lesson helps slightly but
+  losing the working tree is what hurts; contaminated context was not the
+  problem at K=4.
+
+Spend: restart experiment total ~$102; project $314.82/$400.
